@@ -1,0 +1,6 @@
+{
+  "name": "WIP Sewing System",
+  "description": "Production Leader Input & WIP Sewing System dashboard for factory line monitoring, leader authentication, real-time WIP tracking, and line output logging.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
