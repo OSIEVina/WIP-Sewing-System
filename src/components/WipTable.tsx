@@ -260,6 +260,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       'WIP5',
       'WIP SEWING',
       'OUTPUT SEWING',
+      'CHECK (SCAN IN - WIP - OUT)',
       'CHK10',
       'WIP FINISHING',
       'OUT PACKING',
@@ -282,8 +283,9 @@ export const WipTable: React.FC<WipTableProps> = ({
       i.wip5,
       i.wipSewing,
       i.outSewing,
+      (i.inHariIni || 0) - ((i.wipSewing || 0) + (i.outSewing || 0)),
       getChk10Value(i),
-      i.wipFinish,
+      getItemWipFinish(i),
       i.outPacking,
     ]);
 
@@ -506,7 +508,7 @@ export const WipTable: React.FC<WipTableProps> = ({
               <th className="p-2.5 border-r border-slate-200 text-center">WIP5</th>
               <th className="p-2.5 border-r border-slate-200 text-center bg-slate-100/50">WIP SEWING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-emerald-700 bg-emerald-50/50">OUTPUT SEWING</th>
-              <th className="p-2.5 border-r border-slate-200 text-center text-teal-800 bg-teal-50/60 min-w-[110px]" title="Check: WIP Sewing + Output Sewing = Scan In">CHECK (WIP+OUT)</th>
+              <th className="p-2.5 border-r border-slate-200 text-center text-teal-800 bg-teal-50/60 min-w-[110px]" title="Check: Scan In - (WIP Sewing + Output Sewing)">CHECK</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-purple-700 bg-purple-50/30">CHK10</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-amber-700 bg-amber-50/30">WIP FINISHING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-blue-700 bg-blue-50/30">OUT PACKING</th>
@@ -525,22 +527,32 @@ export const WipTable: React.FC<WipTableProps> = ({
                 // Calculate Totals for this SPO
                 const totalQty = groupItems.reduce((s, i) => s + i.qtyOrder, 0);
                 const totalInHariIni = groupItems.reduce((s, i) => s + i.inHariIni, 0);
-                const totalWip0 = groupItems.reduce((s, i) => s + i.wip0, 0);
-                const totalWip1 = groupItems.reduce((s, i) => s + i.wip1, 0);
-                const totalWip2 = groupItems.reduce((s, i) => s + i.wip2, 0);
-                const totalWip3 = groupItems.reduce((s, i) => s + i.wip3, 0);
-                const totalWip4 = groupItems.reduce((s, i) => s + i.wip4, 0);
-                const totalWip5 = groupItems.reduce((s, i) => s + i.wip5, 0);
-                const totalWipSewing = groupItems.reduce((s, i) => s + i.wipSewing, 0);
-                const totalOutSewing = groupItems.reduce((s, i) => s + i.outSewing, 0);
+                const totalWip0 = groupItems.reduce((s, i) => s + (i.wip0 || 0), 0);
+                const totalWip1 = groupItems.reduce((s, i) => s + (i.wip1 || 0), 0);
+                const totalWip2 = groupItems.reduce((s, i) => s + (i.wip2 || 0), 0);
+                const totalWip3 = groupItems.reduce((s, i) => s + (i.wip3 || 0), 0);
+                const totalWip4 = groupItems.reduce((s, i) => s + (i.wip4 || 0), 0);
+                const totalWip5 = groupItems.reduce((s, i) => s + (i.wip5 || 0), 0);
+                const totalWipSewing = totalWip0 + totalWip1 + totalWip2 + totalWip3 + totalWip4 + totalWip5;
+                const totalOutSewing = groupItems.reduce((s, i) => s + (i.outSewing || 0), 0);
                 const totalChk3d = groupItems.reduce((s, i) => s + getChk10Value(i), 0);
                 const totalWipFinish = groupItems.reduce((s, i) => s + getItemWipFinish(i), 0);
-                const totalOutPacking = groupItems.reduce((s, i) => s + i.outPacking, 0);
+                const totalOutPacking = groupItems.reduce((s, i) => s + (i.outPacking || 0), 0);
+                const totalCheck = groupItems.reduce((s, item) => {
+                  const scanInVal = item.inHariIni || 0;
+                  const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+                  const outSewingVal = item.outSewing || 0;
+                  return s + (scanInVal - (wipStationSum + outSewingVal));
+                }, 0);
 
                 return (
                   <React.Fragment key={spoCode}>
                     {groupItems.map((item) => {
-                      const rowWipCheckSum = (item.wipSewing || 0) + (item.outSewing || 0);
+                      const scanInVal = item.inHariIni || 0;
+                      const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+                      const wipSewingVal = wipStationSum > 0 ? wipStationSum : (item.wipSewing || 0);
+                      const outSewingVal = item.outSewing || 0;
+                      const rowCheckValue = scanInVal - (wipSewingVal + outSewingVal);
 
                       return (
                         <tr
@@ -584,12 +596,25 @@ export const WipTable: React.FC<WipTableProps> = ({
                             {item.outSewing || '-'}
                           </td>
                           <td className="p-2.5 border-r border-slate-200 text-center font-bold">
-                            <span
-                              className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
-                              title={`WIP Sewing (${item.wipSewing}) + Output Sewing (${item.outSewing}) = ${rowWipCheckSum}`}
-                            >
-                              ✓ {rowWipCheckSum}
-                            </span>
+                            {rowCheckValue === 0 ? (
+                              <span
+                                className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono"
+                                title={`Scan In (${scanInVal}) - [Jumlah (WIP0 s/d WIP5) (${wipSewingVal}) + Output Sewing (${outSewingVal})] = 0`}
+                              >
+                                ✓ 0
+                              </span>
+                            ) : (
+                              <span
+                                className={`px-1.5 py-0.5 rounded border inline-block font-mono ${
+                                  rowCheckValue > 0
+                                    ? 'text-amber-700 bg-amber-50 border-amber-200'
+                                    : 'text-red-700 bg-red-50 border-red-200'
+                                }`}
+                                title={`Scan In (${scanInVal}) - [Jumlah (WIP0 s/d WIP5) (${wipSewingVal}) + Output Sewing (${outSewingVal})] = ${rowCheckValue}`}
+                              >
+                                {rowCheckValue > 0 ? `+${rowCheckValue}` : rowCheckValue}
+                              </span>
+                            )}
                           </td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-purple-700 font-semibold">{getChk10Value(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-amber-700 font-semibold">{getItemWipFinish(item) || '-'}</td>
@@ -636,8 +661,16 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip5}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWipSewing}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center text-emerald-700">{totalOutSewing}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center text-teal-800 font-black">
-                        {totalWip0 + totalWip1 + totalWip2 + totalWip3 + totalWip4 + totalWip5 + totalOutSewing}
+                      <td className="p-2.5 border-r border-slate-200 text-center font-black">
+                        {totalCheck === 0 ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono">
+                            ✓ 0
+                          </span>
+                        ) : (
+                          <span className={totalCheck > 0 ? 'text-amber-700' : 'text-red-700'}>
+                            {totalCheck > 0 ? `+${totalCheck}` : totalCheck}
+                          </span>
+                        )}
                       </td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalChk3d}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWipFinish}</td>
