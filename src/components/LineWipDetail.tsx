@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SpoOption, WipItem } from '../types';
+import { getLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import {
   ArrowLeft,
   Save,
@@ -11,6 +12,9 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Calendar,
+  Users,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface LineWipDetailProps {
@@ -95,10 +99,47 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const [wipFinish, setWipFinish] = useState<number>(0);
   const [outPacking, setOutPacking] = useState<number>(0);
 
+  // Man Power & Jam Kerja
+  const [normalHours, setNormalHours] = useState<number>(7);
+  const [normalMp, setNormalMp] = useState<number>(25);
+  const [overtimeHours, setOvertimeHours] = useState<number>(0);
+  const [overtimeMp, setOvertimeMp] = useState<number>(0);
+
   // Helpers for string normalization
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+
+  // Load line-level Manpower data on lineId or entryDate change
+  useEffect(() => {
+    const mp = getLineManpower(lineId, entryDate);
+    setNormalHours(mp.normalHours);
+    setNormalMp(mp.normalMp);
+    setOvertimeHours(mp.overtimeHours);
+    setOvertimeMp(mp.overtimeMp);
+  }, [lineId, entryDate]);
+
+  // Save manpower whenever inputs change
+  const handleManpowerChange = (
+    nH: number,
+    nM: number,
+    oH: number,
+    oM: number
+  ) => {
+    setNormalHours(nH);
+    setNormalMp(nM);
+    setOvertimeHours(oH);
+    setOvertimeMp(oM);
+
+    saveLineManpower({
+      lineId,
+      date: entryDate,
+      normalHours: nH,
+      normalMp: nM,
+      overtimeHours: oH,
+      overtimeMp: oM,
+    });
+  };
 
   // Auto load existing entry when entryDate, selectedSpo, size, or lineId changes
   useEffect(() => {
@@ -247,6 +288,10 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       chk3d: chk10,
       wipFinish,
       outPacking,
+      normalHours,
+      normalMp,
+      overtimeHours,
+      overtimeMp,
       date: entryDate,
     });
 
@@ -500,6 +545,8 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             />
           </div>
         </div>
+
+
 
         {/* Row 3: WIP Stations Input (Scan In, WIP 0 - WIP 5) */}
         <div>

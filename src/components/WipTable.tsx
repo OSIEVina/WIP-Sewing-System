@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem } from '../types';
-import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, X, Check, Layers, Calendar, Upload } from 'lucide-react';
+import { getLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { PdfExportModal } from './PdfExportModal';
 
 interface WipTableProps {
   items: WipItem[];
@@ -22,6 +24,8 @@ export const WipTable: React.FC<WipTableProps> = ({
   const [tableFilter, setTableFilter] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState('');
   const [editModalItem, setEditModalItem] = useState<WipItem | null>(null);
+  const [manpowerTick, setManpowerTick] = useState<number>(0);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   const getItemDate = (item: WipItem) =>
     item.date || (item.createdAt ? item.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -178,6 +182,39 @@ export const WipTable: React.FC<WipTableProps> = ({
     return matchesText && matchesDate;
   });
 
+  // Extract distinct Line + Date combinations for the dedicated Manpower Summary Table
+  const lineDatePairs = useMemo(() => {
+    const map = new Map<string, { lineId: string; date: string }>();
+    filteredItems.forEach((item) => {
+      const lId = item.lineId || 'A01';
+      const dStr = getItemDate(item);
+      const key = `${lId}_${dStr}`;
+      if (!map.has(key)) {
+        map.set(key, { lineId: lId, date: dStr });
+      }
+    });
+
+    if (map.size === 0) {
+      const targetDate = selectedDateFilter || todayStr;
+      map.set(`A01_${targetDate}`, { lineId: 'A01', date: targetDate });
+    }
+
+    return Array.from(map.values());
+  }, [filteredItems, selectedDateFilter, todayStr, manpowerTick]);
+
+  // Compute overall deviations for warning notice
+  const allDeviations = useMemo(() => {
+    const list: { lineId: string; date: string; reasons: string[] }[] = [];
+    lineDatePairs.forEach(({ lineId, date }) => {
+      const mp = getLineManpower(lineId, date);
+      const dev = checkManpowerDeviation(mp);
+      if (dev.isDeviation) {
+        list.push({ lineId, date, reasons: dev.reasons });
+      }
+    });
+    return list;
+  }, [lineDatePairs, manpowerTick]);
+
   // Group items by SPO to render TOTAL rows as seen in screenshot
   const spoGroups: Record<string, WipItem[]> = {};
   filteredItems.forEach((item) => {
@@ -266,33 +303,71 @@ export const WipTable: React.FC<WipTableProps> = ({
       'OUT PACKING',
     ];
 
-    const rows = items.map((i) => [
-      getItemDate(i),
-      i.spo,
-      `"${i.style}"`,
-      `"${i.color}"`,
-      i.size,
-      i.qtyOrder,
-      i.unit,
-      i.inHariIni,
-      i.wip0,
-      i.wip1,
-      i.wip2,
-      i.wip3,
-      i.wip4,
-      i.wip5,
-      i.wipSewing,
-      i.outSewing,
-      (i.inHariIni || 0) - ((i.wipSewing || 0) + (i.outSewing || 0)),
-      getChk10Value(i),
-      getItemWipFinish(i),
-      i.outPacking,
-    ]);
+    const rows = items.map((i) => {
+      const scanInVal = i.inHariIni || 0;
+      const wipStationSum = (i.wip0 || 0) + (i.wip1 || 0) + (i.wip2 || 0) + (i.wip3 || 0) + (i.wip4 || 0) + (i.wip5 || 0);
+      const wipSewingVal = wipStationSum > 0 ? wipStationSum : (i.wipSewing || 0);
+      const outSewingVal = i.outSewing || 0;
+      const checkVal = scanInVal - (wipSewingVal + outSewingVal);
 
-    const dataToExport = [headers, ...rows];
-    const ws = XLSX.utils.aoa_to_sheet(dataToExport);
+      return [
+        getItemDate(i),
+        i.spo,
+        `"${i.style}"`,
+        `"${i.color}"`,
+        i.size,
+        i.qtyOrder,
+        i.unit,
+        scanInVal,
+        i.wip0,
+        i.wip1,
+        i.wip2,
+        i.wip3,
+        i.wip4,
+        i.wip5,
+        wipSewingVal,
+        outSewingVal,
+        checkVal,
+        getChk10Value(i),
+        getItemWipFinish(i),
+        i.outPacking,
+      ];
+    });
+
+    const mpHeaders = [
+      'LINE',
+      'TANGGAL',
+      'JAM NORMAL',
+      'MP NORMAL',
+      'JAM LEMBUR',
+      'MP LEMBUR',
+      'TOTAL JAM',
+      'STATUS MP',
+    ];
+
+    const mpRows = lineDatePairs.map(({ lineId, date }) => {
+      const mp = getLineManpower(lineId, date);
+      const dev = checkManpowerDeviation(mp);
+      return [
+        `LINE ${lineId.toUpperCase()}`,
+        date,
+        mp.normalHours,
+        mp.normalMp,
+        mp.overtimeHours,
+        mp.overtimeMp,
+        dev.totalHours,
+        dev.isDeviation ? 'PENYIMPANGAN' : 'NORMAL',
+      ];
+    });
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'WIP Data');
+
+    const wsWip = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(wb, wsWip, 'WIP Production');
+
+    const wsMp = XLSX.utils.aoa_to_sheet([mpHeaders, ...mpRows]);
+    XLSX.utils.book_append_sheet(wb, wsMp, 'Man Power');
+
     XLSX.writeFile(wb, `wip_production_data_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -342,6 +417,11 @@ export const WipTable: React.FC<WipTableProps> = ({
           const qtyOrder = Number(getItemVal(['Qty Order', 'Qty', 'Order Qty'], 1000)) || 0;
           const unit = String(getItemVal(['Unit', 'Satuan'], 'PCE'));
 
+          const normalHours = Number(getItemVal(['Jam Normal', 'Jam Kerja Normal', 'Normal Hours'], 7));
+          const normalMp = Number(getItemVal(['MP Normal', 'MP Jam Normal', 'Normal MP'], 25));
+          const overtimeHours = Number(getItemVal(['Jam Lembur', 'Jam Kerja Lembur', 'Overtime Hours'], 0));
+          const overtimeMp = Number(getItemVal(['MP Lembur', 'MP Jam Lembur', 'Overtime MP'], 0));
+
           const inHariIni = Number(getItemVal(['Scan In', 'Scan In Hari Ini', 'In Hari Ini'], 0)) || 0;
           const wip0 = Number(getItemVal(['WIP0'], 0)) || 0;
           const wip1 = Number(getItemVal(['WIP1'], 0)) || 0;
@@ -368,6 +448,10 @@ export const WipTable: React.FC<WipTableProps> = ({
             qtyOrder,
             unit,
             date: dateStr,
+            normalHours,
+            normalMp,
+            overtimeHours,
+            overtimeMp,
             inHariIni,
             wip0,
             wip1,
@@ -407,6 +491,179 @@ export const WipTable: React.FC<WipTableProps> = ({
         accept=".xlsx, .xls, .csv"
         className="hidden"
       />
+
+      {/* DEDICATED MAN POWER & JAM KERJA SUMMARY TABLE */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 card-shadow space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-blue-50 text-blue-700 rounded-xl border border-blue-100">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                Data Man Power & Jam Kerja Line
+                <span className="text-[10px] font-mono bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold border border-blue-200">
+                  1 Entry / Line / Hari
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500">Ringkasan alokasi man power & jam kerja per line per tanggal</p>
+            </div>
+          </div>
+          <div className="text-xs font-mono text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200">
+            Total Ringkasan: <strong className="text-blue-800">{lineDatePairs.length} Line/Hari</strong>
+          </div>
+        </div>
+
+        {/* Table of Line Manpower Entries */}
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-left text-xs font-sans border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-700 font-mono text-[10px] uppercase tracking-wider font-bold border-b border-slate-200">
+                <th className="p-2.5 border-r border-slate-200 min-w-[100px]">LINE / GEDUNG</th>
+                <th className="p-2.5 border-r border-slate-200 min-w-[100px]">TANGGAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900 min-w-[110px]" title="Max 7 Jam">JAM NORMAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900 min-w-[90px]">MP NORMAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/70 text-purple-900 min-w-[110px]" title="Max 4 Jam">JAM LEMBUR</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/70 text-purple-900 min-w-[90px]">MP LEMBUR</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900 min-w-[100px]">TOTAL JAM</th>
+                <th className="p-2.5 text-center bg-slate-100 text-slate-800 min-w-[140px]">STATUS MP</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 font-mono text-xs">
+              {lineDatePairs.map(({ lineId, date }) => {
+                const mp = getLineManpower(lineId, date);
+                const devInfo = checkManpowerDeviation(mp);
+
+                return (
+                  <tr key={`${lineId}_${date}`} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900 bg-slate-50/50">
+                      LINE {lineId.toUpperCase()}
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-slate-700 font-semibold">
+                      {date}
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="24"
+                          value={mp.normalHours}
+                          onChange={(e) => {
+                            saveLineManpower({
+                              ...mp,
+                              normalHours: Math.max(0, parseFloat(e.target.value) || 0),
+                            });
+                            setManpowerTick((prev) => prev + 1);
+                          }}
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                        <span className="text-[10px] text-slate-400">jam</span>
+                      </div>
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={mp.normalMp}
+                          onChange={(e) => {
+                            saveLineManpower({
+                              ...mp,
+                              normalMp: Math.max(0, parseInt(e.target.value) || 0),
+                            });
+                            setManpowerTick((prev) => prev + 1);
+                          }}
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                        <span className="text-[10px] text-slate-400">org</span>
+                      </div>
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="24"
+                          value={mp.overtimeHours}
+                          onChange={(e) => {
+                            saveLineManpower({
+                              ...mp,
+                              overtimeHours: Math.max(0, parseFloat(e.target.value) || 0),
+                            });
+                            setManpowerTick((prev) => prev + 1);
+                          }}
+                          className={`w-16 px-1.5 py-1 border rounded-lg text-center font-bold text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none ${
+                            mp.overtimeHours > 4 ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-purple-900'
+                          }`}
+                        />
+                        <span className="text-[10px] text-purple-600">jam</span>
+                      </div>
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={mp.overtimeMp}
+                          onChange={(e) => {
+                            saveLineManpower({
+                              ...mp,
+                              overtimeMp: Math.max(0, parseInt(e.target.value) || 0),
+                            });
+                            setManpowerTick((prev) => prev + 1);
+                          }}
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-purple-900 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                        />
+                        <span className="text-[10px] text-purple-600">org</span>
+                      </div>
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900">
+                      {devInfo.totalHours} Jam
+                    </td>
+                    <td className="p-2.5 text-center">
+                      {devInfo.isDeviation ? (
+                        <span
+                          className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1"
+                          title={devInfo.reasons.join(' | ')}
+                        >
+                          ⚠️ PENYIMPANGAN
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ✓ NORMAL
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Alert for Manpower Deviation */}
+        {allDeviations.length > 0 && (
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-bold tracking-wide uppercase text-red-900">
+                PERINGATAN PENYIMPANGAN MAN POWER & JAM KERJA!
+              </div>
+              <div className="text-[11px] text-red-700 space-y-0.5">
+                {allDeviations.map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-1">
+                    <span className="font-bold text-red-800">&bull; Line {item.lineId.toUpperCase()} ({item.date}):</span>
+                    <span>{item.reasons.join(' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Table Header Controls */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 card-shadow">
@@ -484,6 +741,16 @@ export const WipTable: React.FC<WipTableProps> = ({
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span className="hidden sm:inline">Export Excel</span>
           </button>
+
+          <button
+            onClick={() => setIsPdfModalOpen(true)}
+            id="btn-export-pdf"
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition"
+            title="Download PDF Laporan Sesuai Format Excel"
+          >
+            <FileText className="w-4 h-4 text-purple-600" />
+            <span className="hidden sm:inline">Download PDF</span>
+          </button>
         </div>
       </div>
 
@@ -518,7 +785,7 @@ export const WipTable: React.FC<WipTableProps> = ({
           <tbody className="divide-y divide-slate-200/80 font-mono text-slate-700">
             {Object.keys(spoGroups).length === 0 ? (
               <tr>
-                <td colSpan={20} className="p-8 text-center text-slate-400 text-xs font-sans">
+                <td colSpan={21} className="p-8 text-center text-slate-400 text-xs font-sans">
                   Tidak ada data WIP untuk ditampilkan.
                 </td>
               </tr>
@@ -1030,6 +1297,15 @@ export const WipTable: React.FC<WipTableProps> = ({
           </div>
         </div>
       )}
+
+      {/* PDF Export Modal */}
+      <PdfExportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        availableDates={availableDates}
+        items={items}
+        chkItems={chkItems}
+      />
     </div>
   );
 };

@@ -9,6 +9,16 @@ export interface ProductionLine {
   lastUpdated?: string;
 }
 
+export interface LineManpower {
+  lineId: string;
+  date: string; // YYYY-MM-DD
+  normalHours: number; // Jam Kerja Normal (max 7)
+  normalMp: number;    // MP Jam Kerja Normal
+  overtimeHours: number; // Jam Kerja Lembur (max 4)
+  overtimeMp: number;  // MP Jam Kerja Lembur
+  updatedAt?: string;
+}
+
 export interface WipItem {
   id: string;
   lineId: string;
@@ -30,6 +40,10 @@ export interface WipItem {
   chk3d: number;
   wipFinish: number;
   outPacking: number;
+  normalHours?: number; // Jam Kerja Normal (max 7)
+  normalMp?: number;    // MP Jam Kerja Normal
+  overtimeHours?: number; // Jam Kerja Lembur (max 4)
+  overtimeMp?: number;  // MP Jam Kerja Lembur
   date?: string;
   createdAt: string;
   updatedAt: string;
