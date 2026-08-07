@@ -9,6 +9,7 @@ import { LoginLeaderModal } from './components/LoginLeaderModal';
 import { LineWipDetail } from './components/LineWipDetail';
 import { WipTable } from './components/WipTable';
 import { Chk10Table } from './components/Chk10Table';
+import { OutputReconciliation } from './components/OutputReconciliation';
 import { DataSourceModal } from './components/DataSourceModal';
 import { LayoutDashboard, FileSpreadsheet } from 'lucide-react';
 
@@ -351,7 +352,7 @@ export default function App() {
                   }`}
                 >
                   <FileSpreadsheet className="w-4 h-4" />
-                  <span>Sheet CHK10 Data ({chkItems.length})</span>
+                  <span>Rekonsiliasi CHK10 vs WIP (Semua Line)</span>
                 </button>
               </div>
             </div>
@@ -373,17 +374,13 @@ export default function App() {
             )}
 
             {dashboardTab === 'chk_sheet' && (
-              <Chk10Table
-                items={chkItems}
-                spoOptions={spoOptions}
-                linesList={linesList}
-                onAddItem={handleAddChkItem}
-                onUpdateItem={handleUpdateChkItem}
-                onDeleteItem={handleDeleteChkItem}
+              <OutputReconciliation
+                wipItems={wipItems}
+                chkItems={chkItems}
+                onSyncWipOutput={handleSyncWipOutput}
                 onImportBulkChkItems={handleImportBulkChkItems}
                 onRefreshChkSheet={loadChkSheetData}
                 isRefreshingChkSheet={isRefreshingChkSheet}
-                lastSyncTime={lastChkSyncTime}
               />
             )}
           </>
