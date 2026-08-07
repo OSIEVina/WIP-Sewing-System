@@ -9,14 +9,13 @@ import { LoginLeaderModal } from './components/LoginLeaderModal';
 import { LineWipDetail } from './components/LineWipDetail';
 import { WipTable } from './components/WipTable';
 import { Chk10Table } from './components/Chk10Table';
-import { OutputReconciliation } from './components/OutputReconciliation';
 import { DataSourceModal } from './components/DataSourceModal';
-import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
   // Navigation State
   const [currentView, setCurrentView] = useState<'dashboard' | 'line_detail'>('dashboard');
-  const [dashboardTab, setDashboardTab] = useState<'lines_wip' | 'chk_sheet' | 'reconciliation'>('lines_wip');
+  const [dashboardTab, setDashboardTab] = useState<'lines_wip' | 'chk_sheet'>('lines_wip');
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [leaderNik, setLeaderNik] = useState<string>('9370');
 
@@ -354,18 +353,6 @@ export default function App() {
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Sheet CHK10 Data ({chkItems.length})</span>
                 </button>
-
-                <button
-                  onClick={() => setDashboardTab('reconciliation')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                    dashboardTab === 'reconciliation'
-                      ? 'bg-white text-emerald-700 shadow-sm'
-                      : 'hover:text-slate-900'
-                  }`}
-                >
-                  <ArrowRightLeft className="w-4 h-4" />
-                  <span>Cek Output WIP vs CHK10</span>
-                </button>
               </div>
             </div>
 
@@ -397,17 +384,6 @@ export default function App() {
                 onRefreshChkSheet={loadChkSheetData}
                 isRefreshingChkSheet={isRefreshingChkSheet}
                 lastSyncTime={lastChkSyncTime}
-              />
-            )}
-
-            {dashboardTab === 'reconciliation' && (
-              <OutputReconciliation
-                wipItems={wipItems}
-                chkItems={chkItems}
-                onSyncWipOutput={handleSyncWipOutput}
-                onImportBulkChkItems={handleImportBulkChkItems}
-                onRefreshChkSheet={loadChkSheetData}
-                isRefreshingChkSheet={isRefreshingChkSheet}
               />
             )}
           </>
@@ -443,25 +419,6 @@ export default function App() {
                 onDeleteItem={handleDeleteWipItem}
                 onUpdateItem={handleUpdateWipItem}
                 onImportItems={handleImportWipItems}
-              />
-            </div>
-
-            {/* Reconciliation Check for this specific Line (at the bottom) */}
-            <div className="mt-8 border-t border-slate-200 pt-6">
-              <OutputReconciliation
-                wipItems={
-                  selectedLineId
-                    ? wipItems.filter((i) => i.lineId === selectedLineId)
-                    : wipItems
-                }
-                chkItems={
-                  selectedLineId
-                    ? chkItems.filter((c) => c.line === selectedLineId)
-                    : chkItems
-                }
-                onSyncWipOutput={handleSyncWipOutput}
-                onRefreshChkSheet={loadChkSheetData}
-                isRefreshingChkSheet={isRefreshingChkSheet}
               />
             </div>
           </>

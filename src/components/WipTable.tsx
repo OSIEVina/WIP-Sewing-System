@@ -22,7 +22,8 @@ export const WipTable: React.FC<WipTableProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tableFilter, setTableFilter] = useState('');
-  const [selectedDateFilter, setSelectedDateFilter] = useState('');
+  const [globalReportDate, setGlobalReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [editingManpower, setEditingManpower] = useState<{ lineId: string; date: string; normalHours: number; normalMp: number; overtimeHours: number; overtimeMp: number } | null>(null);
   const [editModalItem, setEditModalItem] = useState<WipItem | null>(null);
   const [manpowerTick, setManpowerTick] = useState<number>(0);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
@@ -106,14 +107,14 @@ export const WipTable: React.FC<WipTableProps> = ({
     };
   };
 
-  // Process items: if selectedDateFilter is set and certain SPOs don't have records on that date,
-  // carry over existing active SPOs into selectedDateFilter so the user can see and edit them directly!
+  // Process items: if globalReportDate is set and certain SPOs don't have records on that date,
+  // carry over existing active SPOs into globalReportDate so the user can see and edit them directly!
   const processedItems = React.useMemo(() => {
-    if (!selectedDateFilter) {
+    if (!globalReportDate) {
       return items;
     }
 
-    const existingOnDate = items.filter((item) => getItemDate(item) === selectedDateFilter);
+    const existingOnDate = items.filter((item) => getItemDate(item) === globalReportDate);
     const existingKeys = new Set(
       existingOnDate.map((i) => `${cleanLine(i.lineId)}|${cleanSpo(i.spo)}|${cleanSize(i.size)}`)
     );
@@ -134,11 +135,11 @@ export const WipTable: React.FC<WipTableProps> = ({
           templateItem.lineId,
           templateItem.spo,
           templateItem.size,
-          selectedDateFilter
+          globalReportDate
         );
 
         const projectedItem: WipItem = {
-          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.size}-${selectedDateFilter}`,
+          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.size}-${globalReportDate}`,
           lineId: templateItem.lineId,
           spo: templateItem.spo,
           style: templateItem.style,
@@ -146,7 +147,7 @@ export const WipTable: React.FC<WipTableProps> = ({
           size: templateItem.size,
           qtyOrder: templateItem.qtyOrder,
           unit: templateItem.unit,
-          date: selectedDateFilter,
+          date: globalReportDate,
           inHariIni: 0,
           wip0: 0,
           wip1: 0,
@@ -159,8 +160,8 @@ export const WipTable: React.FC<WipTableProps> = ({
           chk3d: 0,
           wipFinish: carryoverWipFinish,
           outPacking: 0,
-          createdAt: `${selectedDateFilter}T00:00:00.000Z`,
-          updatedAt: `${selectedDateFilter}T00:00:00.000Z`,
+          createdAt: `${globalReportDate}T00:00:00.000Z`,
+          updatedAt: `${globalReportDate}T00:00:00.000Z`,
         };
 
         resultList.push(projectedItem);
@@ -168,7 +169,7 @@ export const WipTable: React.FC<WipTableProps> = ({
     });
 
     return resultList;
-  }, [items, selectedDateFilter]);
+  }, [items, globalReportDate]);
 
   const filteredItems = processedItems.filter((item) => {
     const itemDate = getItemDate(item);
@@ -178,7 +179,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       item.color.toLowerCase().includes(tableFilter.toLowerCase()) ||
       item.size.toLowerCase().includes(tableFilter.toLowerCase()) ||
       itemDate.includes(tableFilter);
-    const matchesDate = !selectedDateFilter || itemDate === selectedDateFilter;
+    const matchesDate = !globalReportDate || itemDate === globalReportDate;
     return matchesText && matchesDate;
   });
 
@@ -195,12 +196,12 @@ export const WipTable: React.FC<WipTableProps> = ({
     });
 
     if (map.size === 0) {
-      const targetDate = selectedDateFilter || todayStr;
+      const targetDate = globalReportDate || todayStr;
       map.set(`A01_${targetDate}`, { lineId: 'A01', date: targetDate });
     }
 
     return Array.from(map.values());
-  }, [filteredItems, selectedDateFilter, todayStr, manpowerTick]);
+  }, [filteredItems, globalReportDate, todayStr, manpowerTick]);
 
   // Compute overall deviations for warning notice
   const allDeviations = useMemo(() => {
@@ -492,6 +493,54 @@ export const WipTable: React.FC<WipTableProps> = ({
         className="hidden"
       />
 
+
+
+      {/* SINGLE REPORT DATE BAR */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 card-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              Tanggal Laporan Produksi
+            </h2>
+            <p className="text-[11px] text-slate-500">Semua data produksi & manpower menggunakan tanggal ini</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <input
+            type="date"
+            value={globalReportDate}
+            onChange={(e) => {
+              const newDate = e.target.value;
+              setGlobalReportDate(newDate);
+              if (newDate && onUpdateItem) {
+                items.forEach((item) => {
+                  onUpdateItem({ ...item, date: newDate });
+                });
+              }
+            }}
+            className="bg-slate-50 border border-slate-300 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs cursor-pointer"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (globalReportDate && onUpdateItem) {
+                items.forEach((item) => {
+                  onUpdateItem({ ...item, date: globalReportDate });
+                });
+                alert(`Tanggal ${globalReportDate} berhasil diterapkan ke semua (${items.length}) data produksi!`);
+              }
+            }}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Terapkan Tanggal</span>
+          </button>
+        </div>
+      </div>
+
       {/* DEDICATED MAN POWER & JAM KERJA SUMMARY TABLE */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 card-shadow space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -521,12 +570,13 @@ export const WipTable: React.FC<WipTableProps> = ({
               <tr className="bg-slate-50 text-slate-700 font-mono text-[10px] uppercase tracking-wider font-bold border-b border-slate-200">
                 <th className="p-2.5 border-r border-slate-200 min-w-[100px]">LINE / GEDUNG</th>
                 <th className="p-2.5 border-r border-slate-200 min-w-[100px]">TANGGAL</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900 min-w-[110px]" title="Max 7 Jam">JAM NORMAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900 min-w-[100px]">JAM NORMAL</th>
                 <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900 min-w-[90px]">MP NORMAL</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/70 text-purple-900 min-w-[110px]" title="Max 4 Jam">JAM LEMBUR</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/70 text-purple-900 min-w-[100px]">JAM LEMBUR</th>
                 <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/70 text-purple-900 min-w-[90px]">MP LEMBUR</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900 min-w-[100px]">TOTAL JAM</th>
-                <th className="p-2.5 text-center bg-slate-100 text-slate-800 min-w-[140px]">STATUS MP</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900 min-w-[90px]">TOTAL JAM</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-slate-100 text-slate-800 min-w-[120px]">STATUS MP</th>
+                <th className="p-2.5 text-center bg-slate-100 text-slate-800 min-w-[90px]">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-mono text-xs">
@@ -542,88 +592,22 @@ export const WipTable: React.FC<WipTableProps> = ({
                     <td className="p-2.5 border-r border-slate-200 text-slate-700 font-semibold">
                       {date}
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          max="24"
-                          value={mp.normalHours}
-                          onChange={(e) => {
-                            saveLineManpower({
-                              ...mp,
-                              normalHours: Math.max(0, parseFloat(e.target.value) || 0),
-                            });
-                            setManpowerTick((prev) => prev + 1);
-                          }}
-                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                        <span className="text-[10px] text-slate-400">jam</span>
-                      </div>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
+                      {mp.normalHours} jam
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={mp.normalMp}
-                          onChange={(e) => {
-                            saveLineManpower({
-                              ...mp,
-                              normalMp: Math.max(0, parseInt(e.target.value) || 0),
-                            });
-                            setManpowerTick((prev) => prev + 1);
-                          }}
-                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                        <span className="text-[10px] text-slate-400">org</span>
-                      </div>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
+                      {mp.normalMp} org
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          max="24"
-                          value={mp.overtimeHours}
-                          onChange={(e) => {
-                            saveLineManpower({
-                              ...mp,
-                              overtimeHours: Math.max(0, parseFloat(e.target.value) || 0),
-                            });
-                            setManpowerTick((prev) => prev + 1);
-                          }}
-                          className={`w-16 px-1.5 py-1 border rounded-lg text-center font-bold text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none ${
-                            mp.overtimeHours > 4 ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-purple-900'
-                          }`}
-                        />
-                        <span className="text-[10px] text-purple-600">jam</span>
-                      </div>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                      {mp.overtimeHours} jam
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={mp.overtimeMp}
-                          onChange={(e) => {
-                            saveLineManpower({
-                              ...mp,
-                              overtimeMp: Math.max(0, parseInt(e.target.value) || 0),
-                            });
-                            setManpowerTick((prev) => prev + 1);
-                          }}
-                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-center font-bold text-purple-900 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                        />
-                        <span className="text-[10px] text-purple-600">org</span>
-                      </div>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                      {mp.overtimeMp} org
                     </td>
                     <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900">
                       {devInfo.totalHours} Jam
                     </td>
-                    <td className="p-2.5 text-center">
+                    <td className="p-2.5 border-r border-slate-200 text-center">
                       {devInfo.isDeviation ? (
                         <span
                           className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1"
@@ -636,6 +620,16 @@ export const WipTable: React.FC<WipTableProps> = ({
                           ✓ NORMAL
                         </span>
                       )}
+                    </td>
+                    <td className="p-2.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setEditingManpower({ ...mp })}
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 inline-flex items-center gap-1 transition shadow-xs"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -675,40 +669,6 @@ export const WipTable: React.FC<WipTableProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-          {/* Date Filter & Date Picker */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs shrink-0">
-            <Calendar className="w-4 h-4 text-blue-600 shrink-0 ml-1.5" />
-            <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">Filter Tgl:</span>
-            <input
-              type="date"
-              value={selectedDateFilter}
-              onChange={(e) => setSelectedDateFilter(e.target.value)}
-              className="bg-white border border-slate-200 px-2 py-1 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-sm"
-              title="Pilih tanggal spesifik dari kalender"
-            />
-            <select
-              value={selectedDateFilter}
-              onChange={(e) => setSelectedDateFilter(e.target.value)}
-              className="bg-transparent text-xs text-slate-800 font-semibold focus:outline-none cursor-pointer max-w-[130px]"
-            >
-              <option value="">Semua Tanggal ({availableDates.length})</option>
-              {availableDates.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-            {selectedDateFilter && (
-              <button
-                onClick={() => setSelectedDateFilter('')}
-                className="text-xs bg-red-100 text-red-600 hover:bg-red-200 font-bold px-2 py-0.5 rounded-md transition"
-                title="Reset filter tanggal"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-
           {/* Table Search */}
           <div className="relative flex-1 sm:w-56">
             <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1291,6 +1251,127 @@ export const WipTable: React.FC<WipTableProps> = ({
                 >
                   <Check className="w-4 h-4" />
                   <span>Simpan Perubahan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manpower Edit Modal Popup */}
+      {editingManpower && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all">
+            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Users className="w-5 h-5" />
+                <h3 className="text-sm font-bold tracking-wide uppercase">
+                  Edit Man Power & Jam Kerja (Line {editingManpower.lineId.toUpperCase()} - {editingManpower.date})
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingManpower(null)}
+                className="text-white/80 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveLineManpower(editingManpower);
+                setManpowerTick((prev) => prev + 1);
+                setEditingManpower(null);
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-xs font-bold text-slate-700">Tanggal</label>
+                  <input
+                    type="date"
+                    value={editingManpower.date}
+                    onChange={(e) => setEditingManpower({ ...editingManpower, date: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">Jam Kerja Normal</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="12"
+                      value={editingManpower.normalHours}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, normalHours: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-xs text-slate-500 font-medium">jam</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">MP Normal</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingManpower.normalMp}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, normalMp: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-xs text-slate-500 font-medium">org</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">Jam Lembur</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="8"
+                      value={editingManpower.overtimeHours}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeHours: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-purple-900 focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="text-xs text-purple-600 font-medium">jam</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">MP Lembur</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingManpower.overtimeMp}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeMp: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-purple-900 focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="text-xs text-purple-600 font-medium">org</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingManpower(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Manpower</span>
                 </button>
               </div>
             </form>
