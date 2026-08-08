@@ -11,7 +11,7 @@ import { WipTable } from './components/WipTable';
 import { Chk10Table } from './components/Chk10Table';
 import { OutputReconciliation } from './components/OutputReconciliation';
 import { DataSourceModal } from './components/DataSourceModal';
-import { LayoutDashboard, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, Calendar, Check } from 'lucide-react';
 
 export default function App() {
   // Navigation State
@@ -19,6 +19,11 @@ export default function App() {
   const [dashboardTab, setDashboardTab] = useState<'lines_wip' | 'chk_sheet'>('lines_wip');
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [leaderNik, setLeaderNik] = useState<string>('9370');
+
+  // Single Master Report Date State for the entire App
+  const [globalReportDate, setGlobalReportDate] = useState<string>(
+    () => new Date().toISOString().split('T')[0]
+  );
 
   // Modal States
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
@@ -325,7 +330,46 @@ export default function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 py-6 px-4 max-w-7xl mx-auto w-full">
+      <main className="flex-1 py-6 px-4 max-w-7xl mx-auto w-full space-y-6">
+        {/* SINGLE MASTER REPORT DATE BAR (Only One Date Control for the Whole App) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 card-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Tanggal Laporan Produksi Utama (Master Date)
+              </h2>
+              <p className="text-[11px] text-slate-500">Satu tanggal terpusat untuk seluruh entri laporan, WIP, dan manpower</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <input
+              type="date"
+              value={globalReportDate}
+              onChange={(e) => {
+                const newDate = e.target.value;
+                if (newDate) {
+                  setGlobalReportDate(newDate);
+                }
+              }}
+              className="bg-slate-50 border border-slate-300 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs cursor-pointer"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0];
+                setGlobalReportDate(today);
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Hari Ini</span>
+            </button>
+          </div>
+        </div>
+
         {currentView === 'dashboard' ? (
           <>
             {/* Navigation Tabs on Dashboard */}
@@ -365,6 +409,8 @@ export default function App() {
                   <WipTable
                     items={wipItems}
                     chkItems={chkItems}
+                    globalReportDate={globalReportDate}
+                    setGlobalReportDate={setGlobalReportDate}
                     onDeleteItem={handleDeleteWipItem}
                     onUpdateItem={handleUpdateWipItem}
                     onImportItems={handleImportWipItems}
@@ -392,6 +438,7 @@ export default function App() {
                 leaderNik={leaderNik}
                 spoOptions={spoOptions}
                 wipItems={wipItems}
+                globalReportDate={globalReportDate}
                 onBackToDashboard={handleBackToDashboard}
                 onSaveWip={handleSaveWipItem}
                 onAddNewSpoOption={handleAddNewSpoOption}
@@ -413,6 +460,8 @@ export default function App() {
                     ? chkItems.filter((c) => c.line === selectedLineId)
                     : chkItems
                 }
+                globalReportDate={globalReportDate}
+                setGlobalReportDate={setGlobalReportDate}
                 onDeleteItem={handleDeleteWipItem}
                 onUpdateItem={handleUpdateWipItem}
                 onImportItems={handleImportWipItems}

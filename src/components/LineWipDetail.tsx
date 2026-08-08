@@ -22,6 +22,7 @@ interface LineWipDetailProps {
   leaderNik: string;
   spoOptions: SpoOption[];
   wipItems?: WipItem[];
+  globalReportDate?: string;
   onBackToDashboard: () => void;
   onSaveWip: (newItem: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onAddNewSpoOption: (spo: SpoOption) => void;
@@ -34,6 +35,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   leaderNik,
   spoOptions,
   wipItems = [],
+  globalReportDate,
   onBackToDashboard,
   onSaveWip,
   onAddNewSpoOption,
@@ -51,7 +53,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const [size, setSize] = useState<string>(spoOptions[0]?.sizes[0] || 'S-PR');
   const [qtyOrder, setQtyOrder] = useState<number>(spoOptions[0]?.qtyOrder || 333);
   const [unit, setUnit] = useState<string>(spoOptions[0]?.unit || 'NPR');
-  const [entryDate, setEntryDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const entryDate = globalReportDate || new Date().toISOString().split('T')[0];
 
   // SPO Search & Dropdown State
   const [spoSearchQuery, setSpoSearchQuery] = useState('');
@@ -339,31 +341,17 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
       {/* Main Form Box */}
       <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 card-shadow space-y-6">
-        {/* Row 0: Tanggal Pergerakan Daily Date Selector */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
+        {/* Active Master Date Banner */}
+        <div className="flex items-center justify-between bg-blue-50/70 p-3.5 rounded-xl border border-blue-200">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-blue-600" />
-            <label htmlFor="input-entry-date" className="text-xs font-bold text-slate-700">
-              Tanggal Pergerakan / Entry:
-            </label>
-            <span className="text-[10px] text-slate-500 hidden sm:inline">&bull; Pilih tanggal catatan laporan WIP</span>
+            <span className="text-xs font-bold text-blue-900">
+              Tanggal Laporan Aktif: <span className="font-mono">{entryDate}</span>
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              id="input-entry-date"
-              value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 shadow-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-            />
-            <button
-              type="button"
-              onClick={() => setEntryDate(new Date().toISOString().split('T')[0])}
-              className="px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition"
-            >
-              Hari Ini
-            </button>
-          </div>
+          <span className="text-[11px] text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
+            Diatur dari Master Date di atas
+          </span>
         </div>
 
         {/* Row 1: SPO, Style, Color Selectors */}

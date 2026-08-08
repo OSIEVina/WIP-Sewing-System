@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WipItem, ChkItem } from '../types';
 import { PasteChkModal } from './PasteChkModal';
+import { getLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -12,6 +13,9 @@ import {
   ChevronDown,
   ChevronUp,
   FileSpreadsheet,
+  Users,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 
 interface OutputReconciliationProps {
@@ -350,6 +354,52 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
   const matchPercentage =
     allRows.length > 0 ? Math.round((matchedRowsCount / allRows.length) * 100) : 100;
 
+  // Unique Line & Date pairs for Manpower & Working Hours breakdown & Output Gap
+  const lineDatePairsMap: Record<string, { line: string; date: string }> = {};
+  wipItems.forEach((w) => {
+    const line = w.lineId;
+    const date = getWipDate(w) || new Date().toISOString().split('T')[0];
+    const key = `${cleanLine(line)}_${date}`;
+    if (!lineDatePairsMap[key]) {
+      lineDatePairsMap[key] = { line, date };
+    }
+  });
+  chkItems.forEach((c) => {
+    const line = c.line;
+    const date = getChkDate(c) || new Date().toISOString().split('T')[0];
+    const key = `${cleanLine(line)}_${date}`;
+    if (!lineDatePairsMap[key]) {
+      lineDatePairsMap[key] = { line, date };
+    }
+  });
+
+  const lineDateManpowerSummary = Object.values(lineDatePairsMap).map(({ line, date }) => {
+    const mp = getLineManpower(line, date);
+    const dev = checkManpowerDeviation(mp);
+
+    const lineDateWip = wipItems
+      .filter((w) => cleanLine(w.lineId) === cleanLine(line) && getWipDate(w) === date)
+      .reduce((sum, w) => sum + (w.outSewing || 0), 0);
+
+    const lineDateChk = chkItems
+      .filter((c) => cleanLine(c.line) === cleanLine(line) && getChkDate(c) === date)
+      .reduce((sum, c) => sum + (c.output || 0), 0);
+
+    return {
+      line,
+      date,
+      mp,
+      dev,
+      lineDateWip,
+      lineDateChk,
+      selisih: lineDateWip - lineDateChk,
+    };
+  }).filter((item) => {
+    const matchesLine = !selectedLine || item.line === selectedLine;
+    const matchesDate = !selectedDate || item.date.includes(selectedDate);
+    return matchesLine && matchesDate;
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.line.localeCompare(b.line));
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden my-6">
       {/* Header */}
@@ -502,18 +552,22 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
           {/* Tanggal Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
             <span className="text-slate-500 font-medium">Tanggal:</span>
-            <select
+            <input
+              type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
-            >
-              <option value="">Semua Tanggal</option>
-              {availableDates.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
+              className="bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-none cursor-pointer"
+            />
+            {selectedDate && (
+              <button
+                type="button"
+                onClick={() => setSelectedDate('')}
+                className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline ml-1"
+                title="Tampilkan Semua Tanggal"
+              >
+                Semua
+              </button>
+            )}
           </div>
 
           {/* Match Mode Selector */}
@@ -541,6 +595,111 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 shadow-sm"
           />
+        </div>
+      </div>
+
+      {/* MANPOWER & JAM KERJA RECONCILIATION SUMMARY */}
+      <div className="p-4 bg-slate-50/80 border-b border-slate-200 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-xs">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Rekonsiliasi Manpower & Jam Kerja per Line & Tanggal
+              </h3>
+              <p className="text-[11px] text-slate-500">Analisis jam kerja normal, lembur, manpower, dan gap output produksi</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+            {lineDateManpowerSummary.length} Line-Tanggal
+          </span>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-100 text-slate-700 font-mono text-[10px] uppercase tracking-wider font-bold border-b border-slate-200">
+                <th className="p-2.5 border-r border-slate-200 text-center">LINE</th>
+                <th className="p-2.5 border-r border-slate-200 text-center">TANGGAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/50 text-blue-900">JAM NORMAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/50 text-blue-900">MP NORMAL</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/50 text-purple-900">JAM LEMBUR</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/50 text-purple-900">MP LEMBUR</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/50 text-indigo-900">TOTAL JAM</th>
+                <th className="p-2.5 border-r border-slate-200 text-right bg-blue-50/20 text-blue-900">OUTPUT WIP</th>
+                <th className="p-2.5 border-r border-slate-200 text-right bg-purple-50/20 text-purple-900">OUTPUT CHK10</th>
+                <th className="p-2.5 border-r border-slate-200 text-right">GAP OUTPUT</th>
+                <th className="p-2.5 text-center">STATUS MP</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 font-mono text-xs">
+              {lineDateManpowerSummary.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="p-6 text-center text-slate-400 font-sans">
+                    Tidak ada data manpower & jam kerja yang sesuai filter.
+                  </td>
+                </tr>
+              ) : (
+                lineDateManpowerSummary.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-900">
+                      {item.line}
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-semibold text-slate-600">
+                      {item.date}
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-blue-900">
+                      {item.mp.normalHours} jam
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-blue-900">
+                      {item.mp.normalMp} org
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                      {item.mp.overtimeHours} jam
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                      {item.mp.overtimeMp} org
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900 bg-indigo-50/25">
+                      {item.dev.totalHours} Jam
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-blue-800 bg-blue-50/10">
+                      {item.lineDateWip.toLocaleString()}
+                    </td>
+                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-purple-800 bg-purple-50/10">
+                      {item.lineDateChk.toLocaleString()}
+                    </td>
+                    <td
+                      className={`p-2.5 border-r border-slate-200 text-right font-black ${
+                        item.selisih === 0
+                          ? 'text-slate-400'
+                          : item.selisih > 0
+                          ? 'text-blue-600'
+                          : 'text-rose-600'
+                      }`}
+                    >
+                      {item.selisih > 0 ? `+${item.selisih}` : item.selisih}
+                    </td>
+                    <td className="p-2.5 text-center">
+                      {item.dev.isDeviation ? (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] font-bold rounded-full border border-red-300 inline-flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 text-red-600" />
+                          <span>Deviasi</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-300 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Normal</span>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

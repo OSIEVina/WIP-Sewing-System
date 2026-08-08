@@ -8,6 +8,8 @@ import { PdfExportModal } from './PdfExportModal';
 interface WipTableProps {
   items: WipItem[];
   chkItems?: ChkItem[];
+  globalReportDate?: string;
+  setGlobalReportDate?: (d: string) => void;
   onDeleteItem?: (id: string) => void;
   onUpdateItem?: (updatedItem: WipItem) => void;
   onImportItems?: (newItems: WipItem[]) => void;
@@ -16,13 +18,17 @@ interface WipTableProps {
 export const WipTable: React.FC<WipTableProps> = ({
   items,
   chkItems = [],
+  globalReportDate: propGlobalDate,
+  setGlobalReportDate: propSetGlobalDate,
   onDeleteItem,
   onUpdateItem,
   onImportItems,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tableFilter, setTableFilter] = useState('');
-  const [globalReportDate, setGlobalReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [localDate, setLocalDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const globalReportDate = propGlobalDate !== undefined ? propGlobalDate : localDate;
+  const setGlobalReportDate = propSetGlobalDate || setLocalDate;
   const [editingManpower, setEditingManpower] = useState<{ lineId: string; date: string; normalHours: number; normalMp: number; overtimeHours: number; overtimeMp: number } | null>(null);
   const [editModalItem, setEditModalItem] = useState<WipItem | null>(null);
   const [manpowerTick, setManpowerTick] = useState<number>(0);
@@ -183,25 +189,26 @@ export const WipTable: React.FC<WipTableProps> = ({
     return matchesText && matchesDate;
   });
 
-  // Extract distinct Line + Date combinations for the dedicated Manpower Summary Table
+  // Extract distinct Line entries paired with the single globalReportDate for the Manpower Summary Table
   const lineDatePairs = useMemo(() => {
-    const map = new Map<string, { lineId: string; date: string }>();
-    filteredItems.forEach((item) => {
-      const lId = item.lineId || 'A01';
-      const dStr = getItemDate(item);
-      const key = `${lId}_${dStr}`;
-      if (!map.has(key)) {
-        map.set(key, { lineId: lId, date: dStr });
+    const lineSet = new Set<string>();
+    items.forEach((item) => {
+      if (item.lineId) {
+        lineSet.add(cleanLine(item.lineId));
       }
     });
 
-    if (map.size === 0) {
-      const targetDate = globalReportDate || todayStr;
-      map.set(`A01_${targetDate}`, { lineId: 'A01', date: targetDate });
+    const lines = Array.from(lineSet).sort();
+    if (lines.length === 0) {
+      lines.push('A01');
     }
 
-    return Array.from(map.values());
-  }, [filteredItems, globalReportDate, todayStr, manpowerTick]);
+    const targetDate = globalReportDate || todayStr;
+    return lines.map((lineId) => ({
+      lineId,
+      date: targetDate,
+    }));
+  }, [items, globalReportDate, todayStr, manpowerTick]);
 
   // Compute overall deviations for warning notice
   const allDeviations = useMemo(() => {
@@ -493,54 +500,6 @@ export const WipTable: React.FC<WipTableProps> = ({
         className="hidden"
       />
 
-
-
-      {/* SINGLE REPORT DATE BAR */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 card-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-              Tanggal Laporan Produksi
-            </h2>
-            <p className="text-[11px] text-slate-500">Semua data produksi & manpower menggunakan tanggal ini</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <input
-            type="date"
-            value={globalReportDate}
-            onChange={(e) => {
-              const newDate = e.target.value;
-              setGlobalReportDate(newDate);
-              if (newDate && onUpdateItem) {
-                items.forEach((item) => {
-                  onUpdateItem({ ...item, date: newDate });
-                });
-              }
-            }}
-            className="bg-slate-50 border border-slate-300 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs cursor-pointer"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (globalReportDate && onUpdateItem) {
-                items.forEach((item) => {
-                  onUpdateItem({ ...item, date: globalReportDate });
-                });
-                alert(`Tanggal ${globalReportDate} berhasil diterapkan ke semua (${items.length}) data produksi!`);
-              }
-            }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 whitespace-nowrap"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>Terapkan Tanggal</span>
-          </button>
-        </div>
-      </div>
-
       {/* DEDICATED MAN POWER & JAM KERJA SUMMARY TABLE */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 card-shadow space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -558,8 +517,9 @@ export const WipTable: React.FC<WipTableProps> = ({
               <p className="text-xs text-slate-500">Ringkasan alokasi man power & jam kerja per line per tanggal</p>
             </div>
           </div>
-          <div className="text-xs font-mono text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200">
-            Total Ringkasan: <strong className="text-blue-800">{lineDatePairs.length} Line/Hari</strong>
+          <div className="text-xs font-mono font-bold text-blue-800 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-blue-600" />
+            <span>Tanggal Aktif: {globalReportDate}</span>
           </div>
         </div>
 
