@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem } from '../types';
-import { getLineManpower, getAllLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { getLineManpower, getAllLineManpower, saveLineManpower, deleteLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PdfExportModal } from './PdfExportModal';
@@ -593,14 +593,31 @@ export const WipTable: React.FC<WipTableProps> = ({
                         )}
                       </td>
                       <td className="p-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setEditingManpower({ ...mp })}
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 inline-flex items-center gap-1 transition shadow-xs"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditingManpower({ ...mp })}
+                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 inline-flex items-center gap-1 transition shadow-xs"
+                            title="Edit Man Power & Jam Kerja"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          {hasMp && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteLineManpower(lineId, date);
+                                setManpowerTick((t) => t + 1);
+                                setEditingManpower(null);
+                              }}
+                              className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-200 inline-flex items-center gap-1 transition shadow-xs"
+                              title="Hapus Data Man Power"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

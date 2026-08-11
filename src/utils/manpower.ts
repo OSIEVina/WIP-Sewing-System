@@ -40,6 +40,15 @@ export function saveLineManpower(data: LineManpower): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
 }
 
+export function deleteLineManpower(lineId: string, date: string): void {
+  const all = getAllLineManpower();
+  const key = `${cleanLineId(lineId)}_${date}`;
+  if (all[key]) {
+    delete all[key];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  }
+}
+
 export function checkManpowerDeviation(mp: { normalHours: number; overtimeHours: number }) {
   const reasons: string[] = [];
   const totalHours = (mp.normalHours || 0) + (mp.overtimeHours || 0);
