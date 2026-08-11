@@ -362,9 +362,6 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
               Tanggal Laporan Produksi Line {lineId}
             </h2>
-            <p className="text-[11px] text-slate-500">
-              Satu tanggal terpusat di atas untuk seluruh data WIP, Scan In, Output, & Manpower
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">

@@ -21,6 +21,7 @@ import {
   createGoogleSpreadsheet,
   populateGoogleSpreadsheet
 } from '../lib/googleSheetsService';
+import { safeGetItem, safeSetItem } from '../utils/storage';
 
 interface GoogleSheetsExportModalProps {
   isOpen: boolean;
@@ -46,15 +47,15 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
     `Database WIP Sewing & CHK10 (${new Date().toISOString().split('T')[0]})`
   );
   const [clientIdInput, setClientIdInput] = useState<string>(() => {
-    return localStorage.getItem('custom_google_client_id') || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '';
+    return safeGetItem('custom_google_client_id') || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '';
   });
 
   // WebApp Mode State
   const [webAppUrl, setWebAppUrl] = useState<string>(() => {
-    return localStorage.getItem('custom_google_webapp_url') || '';
+    return safeGetItem('custom_google_webapp_url') || '';
   });
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('google_sheets_autosync') === 'true';
+    return safeGetItem('google_sheets_autosync') === 'true';
   });
   const [showScriptHelp, setShowScriptHelp] = useState(false);
 
@@ -67,18 +68,18 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
 
   useEffect(() => {
     if (clientIdInput) {
-      localStorage.setItem('custom_google_client_id', clientIdInput);
+      safeSetItem('custom_google_client_id', clientIdInput);
     }
   }, [clientIdInput]);
 
   useEffect(() => {
     if (webAppUrl) {
-      localStorage.setItem('custom_google_webapp_url', webAppUrl);
+      safeSetItem('custom_google_webapp_url', webAppUrl);
     }
   }, [webAppUrl]);
 
   useEffect(() => {
-    localStorage.setItem('google_sheets_autosync', autoSyncEnabled ? 'true' : 'false');
+    safeSetItem('google_sheets_autosync', autoSyncEnabled ? 'true' : 'false');
   }, [autoSyncEnabled]);
 
   if (!isOpen) return null;

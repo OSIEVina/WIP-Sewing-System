@@ -1,4 +1,5 @@
 import { LineManpower } from '../types';
+import { safeGetItem, safeSetItem } from './storage';
 
 const STORAGE_KEY = 'wip_sewing_line_manpower';
 
@@ -6,7 +7,7 @@ const cleanLineId = (id: string) => (id ? id.trim().toUpperCase() : '');
 
 export function getAllLineManpower(): Record<string, LineManpower> {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = safeGetItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : {};
   } catch (err) {
     console.error('Failed to parse line manpower data:', err);
@@ -37,7 +38,7 @@ export function saveLineManpower(data: LineManpower): void {
     ...data,
     updatedAt: new Date().toISOString(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  safeSetItem(STORAGE_KEY, JSON.stringify(all));
 }
 
 export function deleteLineManpower(lineId: string, date: string): void {
@@ -45,7 +46,7 @@ export function deleteLineManpower(lineId: string, date: string): void {
   const key = `${cleanLineId(lineId)}_${date}`;
   if (all[key]) {
     delete all[key];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    safeSetItem(STORAGE_KEY, JSON.stringify(all));
   }
 }
 

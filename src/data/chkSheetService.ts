@@ -1,4 +1,5 @@
 import { ChkItem } from '../types';
+import { safeGetItem, safeSetItem } from '../utils/storage';
 
 export const CHK10_SPREADSHEET_ID = '1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E';
 export const CHK10_SPREADSHEET_GID = '1420133113';
@@ -118,7 +119,7 @@ export async function fetchLiveChk10Items(accessToken?: string | null): Promise<
     console.error('Error fetching live CHK10 data from Google Sheet:', error);
     // Return cached items if available
     try {
-      const cached = localStorage.getItem('wip_sheet_chk10_cache');
+      const cached = safeGetItem('wip_sheet_chk10_cache');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -178,9 +179,7 @@ function parseChkRows(rows: string[][]): ChkItem[] {
   }
 
   if (items.length > 0) {
-    try {
-      localStorage.setItem('wip_sheet_chk10_cache', JSON.stringify(items));
-    } catch {}
+    safeSetItem('wip_sheet_chk10_cache', JSON.stringify(items));
   }
 
   return items;

@@ -200,9 +200,6 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
             <h2 className="text-lg font-black text-slate-900 tracking-tight">
               Compare Scan In vs Scan Distribusi
             </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              Perbandingan kuantitas Scan In (WIP) dengan Scan Distribusi per SPO, Size, Line, dan Hari
-            </p>
           </div>
         </div>
 

@@ -38,6 +38,7 @@ export interface WipItem {
   wipSewing: number;
   outSewing: number;
   chk3d: number;
+  chk10Scan?: number;
   wipFinish: number;
   outPacking: number;
   normalHours?: number; // Jam Kerja Normal (max 7)

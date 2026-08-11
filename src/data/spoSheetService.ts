@@ -1,4 +1,5 @@
 import { SpoOption } from '../types';
+import { safeGetItem, safeSetItem } from '../utils/storage';
 
 export const SPO_GOOGLE_SHEET_CSV_URL =
   'https://docs.google.com/spreadsheets/d/1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E/gviz/tq?tqx=out:csv&gid=672991499';
@@ -101,11 +102,7 @@ export async function fetchLiveSpoOptions(): Promise<SpoOption[]> {
 
     if (result.length > 0) {
       // Save cache in localStorage for instant offline/fast load
-      try {
-        localStorage.setItem('wip_sheet_spo_options', JSON.stringify(result));
-      } catch (e) {
-        console.warn('Could not cache SPO options:', e);
-      }
+      safeSetItem('wip_sheet_spo_options', JSON.stringify(result));
       return result;
     }
   } catch (err) {
@@ -114,7 +111,7 @@ export async function fetchLiveSpoOptions(): Promise<SpoOption[]> {
 
   // Fallback to cache if network fails
   try {
-    const cached = localStorage.getItem('wip_sheet_spo_options');
+    const cached = safeGetItem('wip_sheet_spo_options');
     if (cached) return JSON.parse(cached);
   } catch {}
 

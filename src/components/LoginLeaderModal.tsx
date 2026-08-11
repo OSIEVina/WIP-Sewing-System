@@ -34,10 +34,16 @@ export const LoginLeaderModal: React.FC<LoginLeaderModalProps> = ({
       setMatchedUser(null);
       setIsLoadingUsers(true);
 
-      fetchLiveAllowedUsers().then((users) => {
-        setAllowedUsers(users);
-        setIsLoadingUsers(false);
-      });
+      fetchLiveAllowedUsers()
+        .then((users) => {
+          setAllowedUsers(users);
+        })
+        .catch((err) => {
+          console.warn('Error fetching live allowed users:', err);
+        })
+        .finally(() => {
+          setIsLoadingUsers(false);
+        });
     }
   }, [isOpen]);
 
@@ -98,15 +104,7 @@ export const LoginLeaderModal: React.FC<LoginLeaderModalProps> = ({
           </div>
           <h3 className="text-lg font-bold text-slate-900">Login Leader</h3>
           <p className="text-xs text-slate-500">
-            Akses dibatasi hanya untuk NIK yang terdaftar di{' '}
-            <a
-              href="https://docs.google.com/spreadsheets/d/1urZa6DYXMGtcS39KsLq2nNIPxmL2Z1OcEYMcxNOHyHE/edit?gid=0#gid=0"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-600 font-semibold underline hover:text-blue-700"
-            >
-              Google Sheet User
-            </a>
+            Akses dibatasi hanya untuk NIK yang terdaftar
           </p>
           <div className="pt-1">
             <span className="text-sm font-semibold font-mono text-blue-700 bg-blue-50 inline-block px-3 py-0.5 rounded-full border border-blue-100">

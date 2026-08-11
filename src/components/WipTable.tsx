@@ -95,9 +95,10 @@ export const WipTable: React.FC<WipTableProps> = ({
         const lineMatch = !itemLine || !sLine || sLine === itemLine;
         return lineMatch && sSpo === itemSpo && sSize === itemSize && (!itemDate || !sDate || sDate === itemDate);
       });
-      return matches.reduce((sum, s) => sum + (s.qtyPcs || 0), 0);
+      const sheetSum = matches.reduce((sum, s) => sum + (s.qtyPcs || 0), 0);
+      if (sheetSum > 0) return sheetSum;
     }
-    return 0;
+    return item.chk10Scan || 0;
   };
 
   // Formula: Akumulasi Output Sewing - Akumulasi Out Packing untuk SPO & Size ini di Line ini (tanpa memandang hari)
@@ -265,6 +266,7 @@ export const WipTable: React.FC<WipTableProps> = ({
     setEditModalItem({
       ...item,
       chk3d: getChk10Value(item),
+      chk10Scan: item.chk10Scan !== undefined ? item.chk10Scan : getScanDistribusiValue(item),
     });
   };
 
@@ -336,6 +338,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       'OUTPUT SEWING',
       'CHECK (SCAN IN - WIP - OUT)',
       'CHK10',
+      'CHK10 SCAN',
       'WIP FINISHING',
       'OUT PACKING',
     ];
@@ -366,6 +369,7 @@ export const WipTable: React.FC<WipTableProps> = ({
         outSewingVal,
         checkVal,
         getChk10Value(i),
+        getScanDistribusiValue(i),
         getItemWipFinish(i),
         i.outPacking,
       ];
@@ -1172,7 +1176,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Hasil Sewing & Quality Check
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {[
                     {
                       label: 'Output Sewing',
@@ -1189,6 +1193,14 @@ export const WipTable: React.FC<WipTableProps> = ({
                       color: 'text-purple-700',
                       border: 'border-purple-200',
                       bg: 'bg-purple-50/30',
+                    },
+                    {
+                      label: 'CHK10 SCAN',
+                      key: 'chk10Scan' as const,
+                      val: editModalItem.chk10Scan !== undefined ? editModalItem.chk10Scan : 0,
+                      color: 'text-indigo-700',
+                      border: 'border-indigo-300',
+                      bg: 'bg-indigo-50/30',
                     },
                     {
                       label: 'WIP Finishing',

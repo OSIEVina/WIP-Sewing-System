@@ -1,4 +1,5 @@
 import { ScanDistribusiItem } from '../types';
+import { safeGetItem, safeSetItem } from '../utils/storage';
 
 export const SCAN_DISTRIBUSI_SPREADSHEET_ID = '1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E';
 export const SCAN_DISTRIBUSI_SPREADSHEET_GID = '1959856756';
@@ -107,7 +108,7 @@ export async function fetchLiveScanDistribusiItems(accessToken?: string | null):
   } catch (error) {
     console.error('Error fetching Scan Distribusi items:', error);
     try {
-      const cached = localStorage.getItem('wip_sheet_scan_distribusi_cache');
+      const cached = safeGetItem('wip_sheet_scan_distribusi_cache');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -152,9 +153,7 @@ function parseRows(rows: string[][]): ScanDistribusiItem[] {
   }
 
   if (items.length > 0) {
-    try {
-      localStorage.setItem('wip_sheet_scan_distribusi_cache', JSON.stringify(items));
-    } catch {}
+    safeSetItem('wip_sheet_scan_distribusi_cache', JSON.stringify(items));
   }
 
   return items;

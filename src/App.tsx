@@ -4,6 +4,7 @@ import { INITIAL_LINES, INITIAL_SPO_OPTIONS, INITIAL_WIP_ITEMS, INITIAL_CHK_ITEM
 import { fetchLiveSpoOptions } from './data/spoSheetService';
 import { fetchLiveChk10Items } from './data/chkSheetService';
 import { fetchLiveScanDistribusiItems } from './data/scanDistribusiSheetService';
+import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
 import { LoginLeaderModal } from './components/LoginLeaderModal';
@@ -35,7 +36,7 @@ export default function App() {
 
   // Persistent Data Stores
   const [lines, setLines] = useState<ProductionLine[]>(() => {
-    const saved = localStorage.getItem('wip_sewing_lines');
+    const saved = safeGetItem('wip_sewing_lines');
     if (!saved) return INITIAL_LINES;
     try {
       const parsed: ProductionLine[] = JSON.parse(saved);
@@ -51,8 +52,13 @@ export default function App() {
   });
 
   const [spoOptions, setSpoOptions] = useState<SpoOption[]>(() => {
-    const saved = localStorage.getItem('wip_sewing_spos');
-    return saved ? JSON.parse(saved) : INITIAL_SPO_OPTIONS;
+    const saved = safeGetItem('wip_sewing_spos');
+    if (!saved) return INITIAL_SPO_OPTIONS;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return INITIAL_SPO_OPTIONS;
+    }
   });
 
   const [isRefreshingSpoSheet, setIsRefreshingSpoSheet] = useState(false);
@@ -60,16 +66,21 @@ export default function App() {
   const [lastChkSyncTime, setLastChkSyncTime] = useState<string>('');
 
   const [wipItems, setWipItems] = useState<WipItem[]>(() => {
-    const saved = localStorage.getItem('wip_sewing_items');
-    return saved ? JSON.parse(saved) : INITIAL_WIP_ITEMS;
+    const saved = safeGetItem('wip_sewing_items');
+    if (!saved) return INITIAL_WIP_ITEMS;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return INITIAL_WIP_ITEMS;
+    }
   });
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
   // Debounced Auto-Sync to Google Sheets Web App if enabled
   useEffect(() => {
-    const isAutoSync = localStorage.getItem('google_sheets_autosync') === 'true';
-    const webAppUrl = localStorage.getItem('custom_google_webapp_url');
+    const isAutoSync = safeGetItem('google_sheets_autosync') === 'true';
+    const webAppUrl = safeGetItem('custom_google_webapp_url');
     if (!isAutoSync || !webAppUrl) return;
 
     setSyncStatus('syncing');
@@ -98,7 +109,7 @@ export default function App() {
   }, [wipItems, spoOptions]);
 
   const [chkItems, setChkItems] = useState<ChkItem[]>(() => {
-    const saved = localStorage.getItem('wip_sewing_chk_items');
+    const saved = safeGetItem('wip_sewing_chk_items');
     if (!saved) return INITIAL_CHK_ITEMS;
     try {
       const parsed: ChkItem[] = JSON.parse(saved);
@@ -114,8 +125,13 @@ export default function App() {
   });
 
   const [scanItems, setScanItems] = useState<ScanDistribusiItem[]>(() => {
-    const saved = localStorage.getItem('wip_sheet_scan_distribusi_cache');
-    return saved ? JSON.parse(saved) : [];
+    const saved = safeGetItem('wip_sheet_scan_distribusi_cache');
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
   });
 
   const [isRefreshingScan, setIsRefreshingScan] = useState<boolean>(false);
@@ -129,11 +145,16 @@ export default function App() {
 
   const loadSpoSheetData = async () => {
     setIsRefreshingSpoSheet(true);
-    const liveSpos = await fetchLiveSpoOptions();
-    if (liveSpos.length > 0) {
-      setSpoOptions(liveSpos);
+    try {
+      const liveSpos = await fetchLiveSpoOptions();
+      if (liveSpos.length > 0) {
+        setSpoOptions(liveSpos);
+      }
+    } catch (err) {
+      console.warn('Failed to load live SPO sheet:', err);
+    } finally {
+      setIsRefreshingSpoSheet(false);
     }
-    setIsRefreshingSpoSheet(false);
   };
 
   const loadChkSheetData = async () => {
@@ -173,19 +194,19 @@ export default function App() {
 
   // Save to localStorage on state update
   useEffect(() => {
-    localStorage.setItem('wip_sewing_lines', JSON.stringify(lines));
+    safeSetItem('wip_sewing_lines', JSON.stringify(lines));
   }, [lines]);
 
   useEffect(() => {
-    localStorage.setItem('wip_sewing_spos', JSON.stringify(spoOptions));
+    safeSetItem('wip_sewing_spos', JSON.stringify(spoOptions));
   }, [spoOptions]);
 
   useEffect(() => {
-    localStorage.setItem('wip_sewing_items', JSON.stringify(wipItems));
+    safeSetItem('wip_sewing_items', JSON.stringify(wipItems));
   }, [wipItems]);
 
   useEffect(() => {
-    localStorage.setItem('wip_sewing_chk_items', JSON.stringify(chkItems));
+    safeSetItem('wip_sewing_chk_items', JSON.stringify(chkItems));
   }, [chkItems]);
 
   // Handlers
@@ -394,10 +415,10 @@ export default function App() {
       setSpoOptions(INITIAL_SPO_OPTIONS);
       setWipItems(INITIAL_WIP_ITEMS);
       setChkItems(INITIAL_CHK_ITEMS);
-      localStorage.removeItem('wip_sewing_lines');
-      localStorage.removeItem('wip_sewing_spos');
-      localStorage.removeItem('wip_sewing_items');
-      localStorage.removeItem('wip_sewing_chk_items');
+      safeRemoveItem('wip_sewing_lines');
+      safeRemoveItem('wip_sewing_spos');
+      safeRemoveItem('wip_sewing_items');
+      safeRemoveItem('wip_sewing_chk_items');
     }
   };
 
