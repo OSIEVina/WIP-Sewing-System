@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem } from '../types';
-import { getLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { getLineManpower, getAllLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PdfExportModal } from './PdfExportModal';
@@ -10,9 +10,11 @@ interface WipTableProps {
   chkItems?: ChkItem[];
   globalReportDate?: string;
   setGlobalReportDate?: (d: string) => void;
-  onDeleteItem?: (id: string) => void;
+  onDeleteItem?: (id: string, item?: WipItem) => void;
   onUpdateItem?: (updatedItem: WipItem) => void;
   onImportItems?: (newItems: WipItem[]) => void;
+  hideExportButtons?: boolean;
+  activeLineId?: string;
 }
 
 export const WipTable: React.FC<WipTableProps> = ({
@@ -23,6 +25,8 @@ export const WipTable: React.FC<WipTableProps> = ({
   onDeleteItem,
   onUpdateItem,
   onImportItems,
+  hideExportButtons = false,
+  activeLineId,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tableFilter, setTableFilter] = useState('');
@@ -192,6 +196,9 @@ export const WipTable: React.FC<WipTableProps> = ({
   // Extract distinct Line entries paired with the single globalReportDate for the Manpower Summary Table
   const lineDatePairs = useMemo(() => {
     const lineSet = new Set<string>();
+    if (activeLineId) {
+      lineSet.add(cleanLine(activeLineId));
+    }
     items.forEach((item) => {
       if (item.lineId) {
         lineSet.add(cleanLine(item.lineId));
@@ -200,7 +207,7 @@ export const WipTable: React.FC<WipTableProps> = ({
 
     const lines = Array.from(lineSet).sort();
     if (lines.length === 0) {
-      lines.push('A01');
+      lines.push(activeLineId ? cleanLine(activeLineId) : 'A01');
     }
 
     const targetDate = globalReportDate || todayStr;
@@ -208,7 +215,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       lineId,
       date: targetDate,
     }));
-  }, [items, globalReportDate, todayStr, manpowerTick]);
+  }, [items, globalReportDate, todayStr, manpowerTick, activeLineId]);
 
   // Compute overall deviations for warning notice
   const allDeviations = useMemo(() => {
@@ -517,10 +524,6 @@ export const WipTable: React.FC<WipTableProps> = ({
               <p className="text-xs text-slate-500">Ringkasan alokasi man power & jam kerja per line per tanggal</p>
             </div>
           </div>
-          <div className="text-xs font-mono font-bold text-blue-800 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-blue-600" />
-            <span>Tanggal Aktif: {globalReportDate}</span>
-          </div>
         </div>
 
         {/* Table of Line Manpower Entries */}
@@ -540,60 +543,69 @@ export const WipTable: React.FC<WipTableProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-mono text-xs">
-              {lineDatePairs.map(({ lineId, date }) => {
-                const mp = getLineManpower(lineId, date);
-                const devInfo = checkManpowerDeviation(mp);
+              {(() => {
+                const allMpMap = getAllLineManpower();
+                return lineDatePairs.map(({ lineId, date }) => {
+                  const key = `${cleanLine(lineId)}_${date}`;
+                  const hasMp = !!allMpMap[key];
+                  const mp = getLineManpower(lineId, date);
+                  const devInfo = checkManpowerDeviation(mp);
 
-                return (
-                  <tr key={`${lineId}_${date}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900 bg-slate-50/50">
-                      LINE {lineId.toUpperCase()}
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-slate-700 font-semibold">
-                      {date}
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
-                      {mp.normalHours} jam
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
-                      {mp.normalMp} org
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
-                      {mp.overtimeHours} jam
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
-                      {mp.overtimeMp} org
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900">
-                      {devInfo.totalHours} Jam
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center">
-                      {devInfo.isDeviation ? (
-                        <span
-                          className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1"
-                          title={devInfo.reasons.join(' | ')}
+                  return (
+                    <tr key={`${lineId}_${date}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900 bg-slate-50/50">
+                        LINE {lineId.toUpperCase()}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-slate-700 font-semibold">
+                        {date}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
+                        {hasMp ? `${mp.normalHours} jam` : <span className="text-slate-400 font-normal italic">-</span>}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-bold text-slate-800">
+                        {hasMp ? `${mp.normalMp} org` : <span className="text-slate-400 font-normal italic">-</span>}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                        {hasMp ? `${mp.overtimeHours} jam` : <span className="text-slate-400 font-normal italic">-</span>}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
+                        {hasMp ? `${mp.overtimeMp} org` : <span className="text-slate-400 font-normal italic">-</span>}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900">
+                        {hasMp ? `${devInfo.totalHours} Jam` : <span className="text-slate-400 font-normal italic">-</span>}
+                      </td>
+                      <td className="p-2.5 border-r border-slate-200 text-center">
+                        {!hasMp ? (
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-full border border-slate-200">
+                            Belum Diinput
+                          </span>
+                        ) : devInfo.isDeviation ? (
+                          <span
+                            className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1"
+                            title={devInfo.reasons.join(' | ')}
+                          >
+                            ⚠️ PENYIMPANGAN
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            ✓ NORMAL
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingManpower({ ...mp })}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 inline-flex items-center gap-1 transition shadow-xs"
                         >
-                          ⚠️ PENYIMPANGAN
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          ✓ NORMAL
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-2.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setEditingManpower({ ...mp })}
-                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 inline-flex items-center gap-1 transition shadow-xs"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
@@ -629,6 +641,18 @@ export const WipTable: React.FC<WipTableProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          {/* Global Date Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span className="text-xs font-bold text-slate-700 hidden sm:inline">Tanggal:</span>
+            <input
+              type="date"
+              value={globalReportDate}
+              onChange={(e) => setGlobalReportDate(e.target.value)}
+              className="bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+            />
+          </div>
+
           {/* Table Search */}
           <div className="relative flex-1 sm:w-56">
             <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -642,35 +666,39 @@ export const WipTable: React.FC<WipTableProps> = ({
             />
           </div>
 
-          <button
-            onClick={handleImportExcelClick}
-            id="btn-import-excel"
-            className="flex items-center space-x-1.5 px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold rounded-xl transition"
-            title="Import data dari file Excel (.xlsx / .csv)"
-          >
-            <Upload className="w-4 h-4 text-blue-600" />
-            <span className="hidden sm:inline">Import Excel</span>
-          </button>
+          {!hideExportButtons && (
+            <>
+              <button
+                onClick={handleImportExcelClick}
+                id="btn-import-excel"
+                className="flex items-center space-x-1.5 px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold rounded-xl transition"
+                title="Import data dari file Excel (.xlsx / .csv)"
+              >
+                <Upload className="w-4 h-4 text-blue-600" />
+                <span className="hidden sm:inline">Import Excel</span>
+              </button>
 
-          <button
-            onClick={handleExportCSV}
-            id="btn-export-csv"
-            className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-xl transition"
-            title="Export ke file Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span className="hidden sm:inline">Export Excel</span>
-          </button>
+              <button
+                onClick={handleExportCSV}
+                id="btn-export-csv"
+                className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-xl transition"
+                title="Export ke file Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span className="hidden sm:inline">Export Excel</span>
+              </button>
 
-          <button
-            onClick={() => setIsPdfModalOpen(true)}
-            id="btn-export-pdf"
-            className="flex items-center space-x-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition"
-            title="Download PDF Laporan Sesuai Format Excel"
-          >
-            <FileText className="w-4 h-4 text-purple-600" />
-            <span className="hidden sm:inline">Download PDF</span>
-          </button>
+              <button
+                onClick={() => setIsPdfModalOpen(true)}
+                id="btn-export-pdf"
+                className="flex items-center space-x-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition"
+                title="Download PDF Laporan Sesuai Format Excel"
+              >
+                <FileText className="w-4 h-4 text-purple-600" />
+                <span className="hidden sm:inline">Download PDF</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -817,7 +845,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                               </button>
                               {onDeleteItem && (
                                 <button
-                                  onClick={() => onDeleteItem(item.id)}
+                                  onClick={() => onDeleteItem(item.id, item)}
                                   className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
                                   title="Hapus baris"
                                 >
@@ -986,11 +1014,11 @@ export const WipTable: React.FC<WipTableProps> = ({
                     </label>
                     <input
                       type="number"
-                      value={editModalItem.qtyOrder}
+                      value={editModalItem.qtyOrder || ''}
                       onChange={(e) =>
                         setEditModalItem({
                           ...editModalItem,
-                          qtyOrder: Number(e.target.value) || 0,
+                          qtyOrder: e.target.value === '' ? 0 : Number(e.target.value),
                         })
                       }
                       className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800"
@@ -1056,11 +1084,11 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <input
                         type="number"
                         min="0"
-                        value={st.val}
+                        value={st.val || ''}
                         onChange={(e) =>
                           setEditModalItem({
                             ...editModalItem,
-                            [st.key]: Math.max(0, parseInt(e.target.value) || 0),
+                            [st.key]: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0),
                           })
                         }
                         className="w-full py-1 text-center font-mono text-sm font-bold bg-white border border-slate-200 rounded text-blue-700 focus:outline-none focus:border-blue-500"
@@ -1144,11 +1172,11 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <input
                         type="number"
                         min="0"
-                        value={st.val}
+                        value={st.val || ''}
                         onChange={(e) =>
                           setEditModalItem({
                             ...editModalItem,
-                            [st.key]: Math.max(0, parseInt(e.target.value) || 0),
+                            [st.key]: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0),
                           })
                         }
                         className={`w-full py-1 text-center font-mono text-base font-bold bg-white border border-slate-200 rounded-lg ${st.color} focus:outline-none focus:border-blue-500`}
@@ -1265,8 +1293,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                       step="0.5"
                       min="0"
                       max="12"
-                      value={editingManpower.normalHours}
-                      onChange={(e) => setEditingManpower({ ...editingManpower, normalHours: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      value={editingManpower.normalHours || ''}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, normalHours: e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
                     />
                     <span className="text-xs text-slate-500 font-medium">jam</span>
@@ -1279,8 +1307,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                     <input
                       type="number"
                       min="0"
-                      value={editingManpower.normalMp}
-                      onChange={(e) => setEditingManpower({ ...editingManpower, normalMp: Math.max(0, parseInt(e.target.value) || 0) })}
+                      value={editingManpower.normalMp || ''}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, normalMp: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
                     />
                     <span className="text-xs text-slate-500 font-medium">org</span>
@@ -1295,8 +1323,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                       step="0.5"
                       min="0"
                       max="8"
-                      value={editingManpower.overtimeHours}
-                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeHours: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      value={editingManpower.overtimeHours || ''}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeHours: e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-purple-900 focus:outline-none focus:border-purple-500"
                     />
                     <span className="text-xs text-purple-600 font-medium">jam</span>
@@ -1309,8 +1337,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                     <input
                       type="number"
                       min="0"
-                      value={editingManpower.overtimeMp}
-                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeMp: Math.max(0, parseInt(e.target.value) || 0) })}
+                      value={editingManpower.overtimeMp || ''}
+                      onChange={(e) => setEditingManpower({ ...editingManpower, overtimeMp: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-purple-900 focus:outline-none focus:border-purple-500"
                     />
                     <span className="text-xs text-purple-600 font-medium">org</span>

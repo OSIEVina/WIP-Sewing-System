@@ -1,14 +1,16 @@
 import React from 'react';
-import { Factory, Database, RefreshCw, Layers } from 'lucide-react';
+import { Factory, Database, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 interface HeaderProps {
   currentView: 'dashboard' | 'line_detail';
   selectedLineId?: string;
   leaderNik?: string;
   onOpenDataSource: () => void;
+  onOpenGoogleSheets?: () => void;
   onResetData: () => void;
   totalLines: number;
   activeLinesCount: number;
+  syncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,9 +18,11 @@ export const Header: React.FC<HeaderProps> = ({
   selectedLineId,
   leaderNik,
   onOpenDataSource,
+  onOpenGoogleSheets,
   onResetData,
   totalLines,
   activeLinesCount,
+  syncStatus = 'idle',
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 text-slate-800 px-6 py-4 sticky top-0 z-30 card-shadow">
@@ -65,6 +69,13 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2">
+          {syncStatus !== 'idle' && (
+            <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-semibold text-emerald-800">
+              <span className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-500 animate-ping' : syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+              <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'synced' ? 'Auto-Synced' : 'Sync Error'}</span>
+            </div>
+          )}
+
           <button
             onClick={onOpenDataSource}
             id="btn-data-source"

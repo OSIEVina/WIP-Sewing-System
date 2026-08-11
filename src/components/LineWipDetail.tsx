@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SpoOption, WipItem } from '../types';
-import { getLineManpower, saveLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { getLineManpower, saveLineManpower } from '../utils/manpower';
 import {
   ArrowLeft,
   Save,
@@ -10,11 +10,12 @@ import {
   Package,
   Search,
   RefreshCw,
-  FileSpreadsheet,
   Calendar,
   Users,
   Clock,
   AlertTriangle,
+  Layers,
+  Check,
 } from 'lucide-react';
 
 interface LineWipDetailProps {
@@ -23,6 +24,7 @@ interface LineWipDetailProps {
   spoOptions: SpoOption[];
   wipItems?: WipItem[];
   globalReportDate?: string;
+  setGlobalReportDate?: (d: string) => void;
   onBackToDashboard: () => void;
   onSaveWip: (newItem: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onAddNewSpoOption: (spo: SpoOption) => void;
@@ -36,6 +38,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   spoOptions,
   wipItems = [],
   globalReportDate,
+  setGlobalReportDate,
   onBackToDashboard,
   onSaveWip,
   onAddNewSpoOption,
@@ -53,7 +56,17 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const [size, setSize] = useState<string>(spoOptions[0]?.sizes[0] || 'S-PR');
   const [qtyOrder, setQtyOrder] = useState<number>(spoOptions[0]?.qtyOrder || 333);
   const [unit, setUnit] = useState<string>(spoOptions[0]?.unit || 'NPR');
-  const entryDate = globalReportDate || new Date().toISOString().split('T')[0];
+
+  // Single Top Master Date State for Line Input
+  const [entryDate, setEntryDate] = useState<string>(
+    () => globalReportDate || new Date().toISOString().split('T')[0]
+  );
+
+  useEffect(() => {
+    if (globalReportDate) {
+      setEntryDate(globalReportDate);
+    }
+  }, [globalReportDate]);
 
   // SPO Search & Dropdown State
   const [spoSearchQuery, setSpoSearchQuery] = useState('');
@@ -339,21 +352,40 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
         </button>
       </div>
 
+      {/* 1 SINGLE MASTER DATE CONTROL AT THE VERY TOP FOR ALL DATA IN THIS LINE */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 card-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              Tanggal Laporan Produksi Line {lineId}
+            </h2>
+            <p className="text-[11px] text-slate-500">
+              Satu tanggal terpusat di atas untuk seluruh data WIP, Scan In, Output, & Manpower
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <input
+            type="date"
+            id="input-entry-date"
+            value={entryDate}
+            onChange={(e) => {
+              const newDate = e.target.value;
+              setEntryDate(newDate);
+              if (setGlobalReportDate) {
+                setGlobalReportDate(newDate);
+              }
+            }}
+            className="bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs cursor-pointer w-full sm:w-auto"
+          />
+        </div>
+      </div>
+
       {/* Main Form Box */}
       <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 card-shadow space-y-6">
-        {/* Active Master Date Banner */}
-        <div className="flex items-center justify-between bg-blue-50/70 p-3.5 rounded-xl border border-blue-200">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-blue-600" />
-            <span className="text-xs font-bold text-blue-900">
-              Tanggal Laporan Aktif: <span className="font-mono">{entryDate}</span>
-            </span>
-          </div>
-          <span className="text-[11px] text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
-            Diatur dari Master Date di atas
-          </span>
-        </div>
-
         {/* Row 1: SPO, Style, Color Selectors */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* SPO Selector with Search */}
@@ -514,8 +546,8 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Qty Order</label>
             <input
               type="number"
-              value={qtyOrder}
-              onChange={(e) => setQtyOrder(Number(e.target.value) || 0)}
+              value={qtyOrder || ''}
+              onChange={(e) => setQtyOrder(e.target.value === '' ? 0 : Number(e.target.value))}
               id="input-qty-order"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500"
             />
@@ -536,18 +568,12 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
 
 
-
-
-
-
-
-
         {/* Submit Save Button */}
         <div className="flex items-center justify-end gap-3 pt-2">
           {showSuccessToast && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 animate-fadeIn font-semibold">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Data WIP berhasil disimpan!</span>
+              <span>Data WIP & Manpower berhasil disimpan!</span>
             </div>
           )}
 
@@ -557,7 +583,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-[0.98] cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>Simpan</span>
+            <span>Simpan Laporan</span>
           </button>
         </div>
       </form>
@@ -606,8 +632,8 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
                   <label className="text-xs text-slate-600 font-semibold block mb-1">Qty Order</label>
                   <input
                     type="number"
-                    value={newQtyInput}
-                    onChange={(e) => setNewQtyInput(Number(e.target.value))}
+                    value={newQtyInput || ''}
+                    onChange={(e) => setNewQtyInput(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500"
                   />
                 </div>

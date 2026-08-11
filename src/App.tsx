@@ -11,6 +11,7 @@ import { WipTable } from './components/WipTable';
 import { Chk10Table } from './components/Chk10Table';
 import { OutputReconciliation } from './components/OutputReconciliation';
 import { DataSourceModal } from './components/DataSourceModal';
+import { GoogleSheetsExportModal } from './components/GoogleSheetsExportModal';
 import { LayoutDashboard, FileSpreadsheet, Calendar, Check } from 'lucide-react';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   // Modal States
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isDataSourceModalOpen, setIsDataSourceModalOpen] = useState<boolean>(false);
+  const [isGoogleSheetsModalOpen, setIsGoogleSheetsModalOpen] = useState<boolean>(false);
 
   // Persistent Data Stores
   const [lines, setLines] = useState<ProductionLine[]>(() => {
@@ -59,6 +61,39 @@ export default function App() {
     const saved = localStorage.getItem('wip_sewing_items');
     return saved ? JSON.parse(saved) : INITIAL_WIP_ITEMS;
   });
+
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+
+  // Debounced Auto-Sync to Google Sheets Web App if enabled
+  useEffect(() => {
+    const isAutoSync = localStorage.getItem('google_sheets_autosync') === 'true';
+    const webAppUrl = localStorage.getItem('custom_google_webapp_url');
+    if (!isAutoSync || !webAppUrl) return;
+
+    setSyncStatus('syncing');
+    const timer = setTimeout(async () => {
+      try {
+        const payload = {
+          action: 'syncData',
+          timestamp: new Date().toISOString(),
+          wipItems,
+          spoOptions,
+        };
+        await fetch(webAppUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Auto-sync error:', err);
+        setSyncStatus('error');
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [wipItems, spoOptions]);
 
   const [chkItems, setChkItems] = useState<ChkItem[]>(() => {
     const saved = localStorage.getItem('wip_sewing_chk_items');
@@ -184,8 +219,60 @@ export default function App() {
     });
   };
 
-  const handleDeleteWipItem = (id: string) => {
-    setWipItems((prev) => prev.filter((item) => item.id !== id));
+  const handleDeleteWipItem = (id: string, targetItem?: WipItem) => {
+    setWipItems((prev) => {
+      const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
+      const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+      const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+      const getItemDate = (i: WipItem) =>
+        i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
+
+      if (targetItem) {
+        const targetLine = cleanLine(targetItem.lineId);
+        const targetSpo = cleanSpo(targetItem.spo);
+        const targetSize = cleanSize(targetItem.size);
+        const targetDate = getItemDate(targetItem);
+
+        // Filter out items that match id OR match (lineId + spo + size)
+        return prev.filter((item) => {
+          if (item.id === id || item.id === targetItem.id) return false;
+          if (
+            cleanLine(item.lineId) === targetLine &&
+            cleanSpo(item.spo) === targetSpo &&
+            cleanSize(item.size) === targetSize
+          ) {
+            if (!getItemDate(item) || getItemDate(item) === targetDate || id.startsWith('proj-')) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+
+      // Fallback: direct ID match or projected ID match
+      if (prev.some((item) => item.id === id)) {
+        return prev.filter((item) => item.id !== id);
+      }
+
+      return prev.filter((item) => {
+        if (id.startsWith('proj-')) {
+          const itemLine = cleanLine(item.lineId);
+          const itemSpo = cleanSpo(item.spo);
+          const itemSize = cleanSize(item.size);
+          if (
+            itemLine &&
+            itemSpo &&
+            itemSize &&
+            id.toUpperCase().includes(itemLine) &&
+            id.toLowerCase().includes(itemSpo) &&
+            id.toLowerCase().includes(itemSize)
+          ) {
+            return false;
+          }
+        }
+        return true;
+      });
+    });
   };
 
   const handleUpdateWipItem = (updatedItem: WipItem) => {
@@ -327,49 +414,11 @@ export default function App() {
         onResetData={handleResetData}
         totalLines={lines.length}
         activeLinesCount={activeLinesCount}
+        syncStatus={syncStatus}
       />
 
       {/* Main View Area */}
       <main className="flex-1 py-6 px-4 max-w-7xl mx-auto w-full space-y-6">
-        {/* SINGLE MASTER REPORT DATE BAR (Only One Date Control for the Whole App) */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 card-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                Tanggal Laporan Produksi Utama (Master Date)
-              </h2>
-              <p className="text-[11px] text-slate-500">Satu tanggal terpusat untuk seluruh entri laporan, WIP, dan manpower</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <input
-              type="date"
-              value={globalReportDate}
-              onChange={(e) => {
-                const newDate = e.target.value;
-                if (newDate) {
-                  setGlobalReportDate(newDate);
-                }
-              }}
-              className="bg-slate-50 border border-slate-300 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-xs cursor-pointer"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const today = new Date().toISOString().split('T')[0];
-                setGlobalReportDate(today);
-              }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Hari Ini</span>
-            </button>
-          </div>
-        </div>
-
         {currentView === 'dashboard' ? (
           <>
             {/* Navigation Tabs on Dashboard */}
@@ -439,6 +488,7 @@ export default function App() {
                 spoOptions={spoOptions}
                 wipItems={wipItems}
                 globalReportDate={globalReportDate}
+                setGlobalReportDate={setGlobalReportDate}
                 onBackToDashboard={handleBackToDashboard}
                 onSaveWip={handleSaveWipItem}
                 onAddNewSpoOption={handleAddNewSpoOption}
@@ -450,6 +500,7 @@ export default function App() {
             {/* Line Specific WIP Table */}
             <div className="mt-8 border-t border-slate-200 pt-6">
               <WipTable
+                activeLineId={selectedLineId || undefined}
                 items={
                   selectedLineId
                     ? wipItems.filter((i) => i.lineId === selectedLineId)
@@ -465,6 +516,7 @@ export default function App() {
                 onDeleteItem={handleDeleteWipItem}
                 onUpdateItem={handleUpdateWipItem}
                 onImportItems={handleImportWipItems}
+                hideExportButtons={true}
               />
             </div>
           </>
@@ -488,6 +540,16 @@ export default function App() {
         spoOptions={spoOptions}
         chkItems={chkItems}
         onImportData={handleImportDataSource}
+      />
+
+      {/* Google Sheets Direct Export Modal */}
+      <GoogleSheetsExportModal
+        isOpen={isGoogleSheetsModalOpen}
+        onClose={() => setIsGoogleSheetsModalOpen(false)}
+        wipItems={wipItems}
+        chkItems={chkItems}
+        spoOptions={spoOptions}
+        lines={lines}
       />
 
       {/* Footer */}

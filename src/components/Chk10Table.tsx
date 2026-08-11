@@ -438,8 +438,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   <input
                     type="number"
                     required
-                    value={newWeek}
-                    onChange={(e) => setNewWeek(Number(e.target.value))}
+                    value={newWeek || ''}
+                    onChange={(e) => setNewWeek(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
                 </div>
@@ -451,8 +451,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                     type="number"
                     required
                     min="1"
-                    value={newDay}
-                    onChange={(e) => setNewDay(Number(e.target.value))}
+                    value={newDay || ''}
+                    onChange={(e) => setNewDay(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
                 </div>
@@ -463,8 +463,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   <input
                     type="number"
                     required
-                    value={newJamKe}
-                    onChange={(e) => setNewJamKe(Number(e.target.value))}
+                    value={newJamKe || ''}
+                    onChange={(e) => setNewJamKe(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
                 </div>
@@ -551,8 +551,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   type="number"
                   required
                   min="1"
-                  value={newOutput}
-                  onChange={(e) => setNewOutput(Number(e.target.value))}
+                  value={newOutput || ''}
+                  onChange={(e) => setNewOutput(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full px-3 py-2 border border-emerald-300 bg-emerald-50/30 rounded-xl text-base font-mono font-bold text-emerald-800 text-center"
                 />
               </div>
@@ -603,9 +603,9 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   <input
                     type="number"
                     required
-                    value={editModalItem.week}
+                    value={editModalItem.week || ''}
                     onChange={(e) =>
-                      setEditModalItem({ ...editModalItem, week: Number(e.target.value) || 0 })
+                      setEditModalItem({ ...editModalItem, week: e.target.value === '' ? 0 : Number(e.target.value) })
                     }
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
@@ -618,9 +618,9 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                     type="number"
                     required
                     min="1"
-                    value={editModalItem.day || 1}
+                    value={editModalItem.day || ''}
                     onChange={(e) =>
-                      setEditModalItem({ ...editModalItem, day: Number(e.target.value) || 1 })
+                      setEditModalItem({ ...editModalItem, day: e.target.value === '' ? 0 : Number(e.target.value) })
                     }
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
@@ -632,9 +632,9 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   <input
                     type="number"
                     required
-                    value={editModalItem.jamKe}
+                    value={editModalItem.jamKe || ''}
                     onChange={(e) =>
-                      setEditModalItem({ ...editModalItem, jamKe: Number(e.target.value) || 0 })
+                      setEditModalItem({ ...editModalItem, jamKe: e.target.value === '' ? 0 : Number(e.target.value) })
                     }
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                   />
@@ -726,9 +726,9 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                   type="number"
                   required
                   min="0"
-                  value={editModalItem.output}
+                  value={editModalItem.output || ''}
                   onChange={(e) =>
-                    setEditModalItem({ ...editModalItem, output: Number(e.target.value) || 0 })
+                    setEditModalItem({ ...editModalItem, output: e.target.value === '' ? 0 : Number(e.target.value) })
                   }
                   className="w-full px-3 py-2 border border-emerald-300 bg-emerald-50/30 rounded-xl text-base font-mono font-bold text-emerald-800 text-center"
                 />

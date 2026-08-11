@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { WipItem, ChkItem } from '../types';
 import { PasteChkModal } from './PasteChkModal';
-import { getLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { getLineManpower, getAllLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -373,7 +373,10 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
     }
   });
 
+  const allMpMap = getAllLineManpower();
   const lineDateManpowerSummary = Object.values(lineDatePairsMap).map(({ line, date }) => {
+    const key = `${cleanLine(line)}_${date}`;
+    const hasMp = !!allMpMap[key];
     const mp = getLineManpower(line, date);
     const dev = checkManpowerDeviation(mp);
 
@@ -381,15 +384,25 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
       .filter((w) => cleanLine(w.lineId) === cleanLine(line) && getWipDate(w) === date)
       .reduce((sum, w) => sum + (w.outSewing || 0), 0);
 
-    const lineDateChk = chkItems
-      .filter((c) => cleanLine(c.line) === cleanLine(line) && getChkDate(c) === date)
-      .reduce((sum, c) => sum + (c.output || 0), 0);
+    const matchingChkForDate = chkItems.filter(
+      (c) => cleanLine(c.line) === cleanLine(line) && getChkDate(c) === date
+    );
+    const lineDateChk = matchingChkForDate.reduce((sum, c) => sum + (c.output || 0), 0);
+    const totalJamChk = new Set(matchingChkForDate.map((c) => c.jamKe)).size;
+    const totalJamWip = hasMp ? dev.totalHours : 0;
+    const manpowerWip = hasMp ? ((mp.normalMp || 0) + (mp.overtimeMp || 0)) : 0;
+    const manpowerChk = hasMp ? manpowerWip : 0;
 
     return {
       line,
       date,
+      hasMp,
       mp,
       dev,
+      totalJamChk,
+      totalJamWip,
+      manpowerChk,
+      manpowerWip,
       lineDateWip,
       lineDateChk,
       selisih: lineDateWip - lineDateChk,
@@ -623,21 +636,17 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
               <tr className="bg-slate-100 text-slate-700 font-mono text-[10px] uppercase tracking-wider font-bold border-b border-slate-200">
                 <th className="p-2.5 border-r border-slate-200 text-center">LINE</th>
                 <th className="p-2.5 border-r border-slate-200 text-center">TANGGAL</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/50 text-blue-900">JAM NORMAL</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/50 text-blue-900">MP NORMAL</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/50 text-purple-900">JAM LEMBUR</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-purple-50/50 text-purple-900">MP LEMBUR</th>
-                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/50 text-indigo-900">TOTAL JAM</th>
-                <th className="p-2.5 border-r border-slate-200 text-right bg-blue-50/20 text-blue-900">OUTPUT WIP</th>
-                <th className="p-2.5 border-r border-slate-200 text-right bg-purple-50/20 text-purple-900">OUTPUT CHK10</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-indigo-50/50 text-indigo-900">TOTAL JAM (CHK vs WIP)</th>
+                <th className="p-2.5 border-r border-slate-200 text-center bg-blue-50/50 text-blue-900">MAN POWER (CHK vs WIP)</th>
+                <th className="p-2.5 border-r border-slate-200 text-right bg-purple-50/20 text-purple-900">OUTPUT (CHK vs WIP)</th>
                 <th className="p-2.5 border-r border-slate-200 text-right">GAP OUTPUT</th>
-                <th className="p-2.5 text-center">STATUS MP</th>
+                <th className="p-2.5 text-center">STATUS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-mono text-xs">
               {lineDateManpowerSummary.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-6 text-center text-slate-400 font-sans">
+                  <td colSpan={7} className="p-6 text-center text-slate-400 font-sans">
                     Tidak ada data manpower & jam kerja yang sesuai filter.
                   </td>
                 </tr>
@@ -650,40 +659,32 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
                     <td className="p-2.5 border-r border-slate-200 text-center font-semibold text-slate-600">
                       {item.date}
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-blue-900">
-                      {item.mp.normalHours} jam
+                    <td className={`p-2.5 border-r border-slate-200 text-center font-bold ${item.hasMp && item.totalJamChk !== item.totalJamWip ? 'bg-rose-100/90 text-rose-900' : 'bg-indigo-50/20 text-indigo-900'}`}>
+                      {item.totalJamChk > 0 ? `${item.totalJamChk} jam` : '-'} <span className="text-slate-400">vs</span> {item.hasMp ? `${item.totalJamWip} jam` : <span className="text-slate-400 font-normal italic">-</span>}
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-blue-900">
-                      {item.mp.normalMp} org
+                    <td className={`p-2.5 border-r border-slate-200 text-center font-bold ${item.hasMp && item.manpowerChk !== item.manpowerWip ? 'bg-rose-100/90 text-rose-900' : 'bg-blue-50/10 text-blue-900'}`}>
+                      {item.hasMp ? `${item.manpowerWip} org` : <span className="text-slate-400 font-normal italic">-</span>}
                     </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
-                      {item.mp.overtimeHours} jam
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-bold text-purple-900">
-                      {item.mp.overtimeMp} org
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-center font-black text-indigo-900 bg-indigo-50/25">
-                      {item.dev.totalHours} Jam
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-blue-800 bg-blue-50/10">
-                      {item.lineDateWip.toLocaleString()}
-                    </td>
-                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-purple-800 bg-purple-50/10">
-                      {item.lineDateChk.toLocaleString()}
+                    <td className={`p-2.5 border-r border-slate-200 text-right font-bold ${item.lineDateChk !== item.lineDateWip ? 'bg-rose-100/90 text-rose-900' : 'bg-purple-50/10 text-purple-800'}`}>
+                      <span className={item.lineDateChk !== item.lineDateWip ? 'text-rose-900 font-black' : 'text-purple-700'}>{item.lineDateChk.toLocaleString()}</span> <span className="text-slate-400 font-normal">vs</span> <span className={item.lineDateChk !== item.lineDateWip ? 'text-rose-900 font-black' : 'text-blue-700'}>{item.lineDateWip.toLocaleString()}</span> pcs
                     </td>
                     <td
                       className={`p-2.5 border-r border-slate-200 text-right font-black ${
                         item.selisih === 0
-                          ? 'text-slate-400'
+                          ? 'text-slate-400 bg-slate-50/30'
                           : item.selisih > 0
-                          ? 'text-blue-600'
-                          : 'text-rose-600'
+                          ? 'text-blue-700 bg-blue-100/80 animate-pulse'
+                          : 'text-rose-700 bg-rose-100/90 animate-pulse'
                       }`}
                     >
-                      {item.selisih > 0 ? `+${item.selisih}` : item.selisih}
+                      {item.selisih > 0 ? `+${item.selisih}` : item.selisih} pcs
                     </td>
                     <td className="p-2.5 text-center">
-                      {item.dev.isDeviation ? (
+                      {!item.hasMp ? (
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-full border border-slate-200">
+                          Belum Diinput
+                        </span>
+                      ) : item.dev.isDeviation ? (
                         <span className="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] font-bold rounded-full border border-red-300 inline-flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 text-red-600" />
                           <span>Deviasi</span>

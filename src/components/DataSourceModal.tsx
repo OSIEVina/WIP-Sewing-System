@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ProductionLine, WipItem, SpoOption, ChkItem } from '../types';
-import { Database, Copy, Upload, Check, AlertCircle, X, Code2 } from 'lucide-react';
+import { Database, Copy, Upload, Check, AlertCircle, X, FileSpreadsheet } from 'lucide-react';
 
 interface DataSourceModalProps {
   isOpen: boolean;
@@ -141,14 +141,16 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-          <button
-            onClick={handleCopy}
-            id="btn-copy-json"
-            className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition"
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
-            <span>{copied ? 'Tersalin!' : 'Salin JSON Data'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              id="btn-copy-json"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+              <span>{copied ? 'Tersalin!' : 'Salin JSON Data'}</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
