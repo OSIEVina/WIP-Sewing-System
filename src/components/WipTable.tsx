@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { WipItem, ChkItem } from '../types';
+import { WipItem, ChkItem, ScanDistribusiItem } from '../types';
 import { getLineManpower, getAllLineManpower, saveLineManpower, deleteLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -8,6 +8,7 @@ import { PdfExportModal } from './PdfExportModal';
 interface WipTableProps {
   items: WipItem[];
   chkItems?: ChkItem[];
+  scanItems?: ScanDistribusiItem[];
   globalReportDate?: string;
   setGlobalReportDate?: (d: string) => void;
   onDeleteItem?: (id: string, item?: WipItem) => void;
@@ -20,6 +21,7 @@ interface WipTableProps {
 export const WipTable: React.FC<WipTableProps> = ({
   items,
   chkItems = [],
+  scanItems = [],
   globalReportDate: propGlobalDate,
   setGlobalReportDate: propSetGlobalDate,
   onDeleteItem,
@@ -76,6 +78,26 @@ export const WipTable: React.FC<WipTableProps> = ({
     }
 
     return item.chk3d || 0;
+  };
+
+  const getScanDistribusiValue = (item: WipItem) => {
+    const itemDate = getItemDate(item);
+    const itemLine = cleanLine(item.lineId);
+    const itemSpo = cleanSpo(item.spo);
+    const itemSize = cleanSize(item.size);
+
+    if (scanItems && scanItems.length > 0) {
+      const matches = scanItems.filter((s) => {
+        const sLine = cleanLine(s.line);
+        const sSpo = cleanSpo(s.spo);
+        const sSize = cleanSize(s.size);
+        const sDate = s.date ? s.date.trim() : '';
+        const lineMatch = !itemLine || !sLine || sLine === itemLine;
+        return lineMatch && sSpo === itemSpo && sSize === itemSize && (!itemDate || !sDate || sDate === itemDate);
+      });
+      return matches.reduce((sum, s) => sum + (s.qtyPcs || 0), 0);
+    }
+    return 0;
   };
 
   // Formula: Akumulasi Output Sewing - Akumulasi Out Packing untuk SPO & Size ini di Line ini (tanpa memandang hari)
@@ -742,6 +764,7 @@ export const WipTable: React.FC<WipTableProps> = ({
               <th className="p-2.5 border-r border-slate-200 text-center text-emerald-700 bg-emerald-50/50">OUTPUT SEWING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-teal-800 bg-teal-50/60 min-w-[110px]" title="Check: Scan In - (WIP Sewing + Output Sewing)">CHECK</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-purple-700 bg-purple-50/30">CHK10</th>
+              <th className="p-2.5 border-r border-slate-200 text-center text-indigo-700 bg-indigo-50/30" title="Scan Distribusi (CHK10 Scan)">CHK10 SCAN</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-amber-700 bg-amber-50/30">WIP FINISHING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-blue-700 bg-blue-50/30">OUT PACKING</th>
               <th className="p-2.5 text-center">AKSI</th>
@@ -750,7 +773,7 @@ export const WipTable: React.FC<WipTableProps> = ({
           <tbody className="divide-y divide-slate-200/80 font-mono text-slate-700">
             {Object.keys(spoGroups).length === 0 ? (
               <tr>
-                <td colSpan={21} className="p-8 text-center text-slate-400 text-xs font-sans">
+                <td colSpan={22} className="p-8 text-center text-slate-400 text-xs font-sans">
                   Tidak ada data WIP untuk ditampilkan.
                 </td>
               </tr>
@@ -768,6 +791,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                 const totalWipSewing = totalWip0 + totalWip1 + totalWip2 + totalWip3 + totalWip4 + totalWip5;
                 const totalOutSewing = groupItems.reduce((s, i) => s + (i.outSewing || 0), 0);
                 const totalChk3d = groupItems.reduce((s, i) => s + getChk10Value(i), 0);
+                const totalScanDist = groupItems.reduce((s, i) => s + getScanDistribusiValue(i), 0);
                 const totalWipFinish = groupItems.reduce((s, i) => s + getItemWipFinish(i), 0);
                 const totalOutPacking = groupItems.reduce((s, i) => s + (i.outPacking || 0), 0);
                 const totalCheck = groupItems.reduce((s, item) => {
@@ -849,6 +873,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                             )}
                           </td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-purple-700 font-semibold">{getChk10Value(item) || '-'}</td>
+                          <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-semibold bg-indigo-50/20">{getScanDistribusiValue(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-amber-700 font-semibold">{getItemWipFinish(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-blue-700">{item.outPacking || '-'}</td>
                           <td className="p-2.5 text-center">
@@ -905,6 +930,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                         )}
                       </td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalChk3d}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-bold">{totalScanDist}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWipFinish}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalOutPacking}</td>
                       <td className="p-2.5"></td>

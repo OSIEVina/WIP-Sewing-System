@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ProductionLine, WipItem, SpoOption, ChkItem } from './types';
+import { ProductionLine, WipItem, SpoOption, ChkItem, ScanDistribusiItem } from './types';
 import { INITIAL_LINES, INITIAL_SPO_OPTIONS, INITIAL_WIP_ITEMS, INITIAL_CHK_ITEMS } from './data/initialData';
 import { fetchLiveSpoOptions } from './data/spoSheetService';
 import { fetchLiveChk10Items } from './data/chkSheetService';
+import { fetchLiveScanDistribusiItems } from './data/scanDistribusiSheetService';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
 import { LoginLeaderModal } from './components/LoginLeaderModal';
@@ -10,14 +11,15 @@ import { LineWipDetail } from './components/LineWipDetail';
 import { WipTable } from './components/WipTable';
 import { Chk10Table } from './components/Chk10Table';
 import { OutputReconciliation } from './components/OutputReconciliation';
+import { ScanDistribusiComparison } from './components/ScanDistribusiComparison';
 import { DataSourceModal } from './components/DataSourceModal';
 import { GoogleSheetsExportModal } from './components/GoogleSheetsExportModal';
-import { LayoutDashboard, FileSpreadsheet, Calendar, Check } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft, Calendar, Check } from 'lucide-react';
 
 export default function App() {
   // Navigation State
   const [currentView, setCurrentView] = useState<'dashboard' | 'line_detail'>('dashboard');
-  const [dashboardTab, setDashboardTab] = useState<'lines_wip' | 'chk_sheet'>('lines_wip');
+  const [dashboardTab, setDashboardTab] = useState<'lines_wip' | 'chk_sheet' | 'scan_comparison'>('lines_wip');
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [leaderNik, setLeaderNik] = useState<string>('9370');
 
@@ -111,10 +113,18 @@ export default function App() {
     }
   });
 
-  // Fetch live SPO options & CHK10 records from Google Sheets on mount
+  const [scanItems, setScanItems] = useState<ScanDistribusiItem[]>(() => {
+    const saved = localStorage.getItem('wip_sheet_scan_distribusi_cache');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [isRefreshingScan, setIsRefreshingScan] = useState<boolean>(false);
+
+  // Fetch live SPO options, CHK10 records, and Scan Distribusi records from Google Sheets on mount
   useEffect(() => {
     loadSpoSheetData();
     loadChkSheetData();
+    loadScanDistribusiData();
   }, []);
 
   const loadSpoSheetData = async () => {
@@ -144,6 +154,20 @@ export default function App() {
       console.warn('Failed to load live CHK10 sheet:', err);
     } finally {
       setIsRefreshingChkSheet(false);
+    }
+  };
+
+  const loadScanDistribusiData = async () => {
+    setIsRefreshingScan(true);
+    try {
+      const liveScan = await fetchLiveScanDistribusiItems();
+      if (liveScan.length > 0) {
+        setScanItems(liveScan);
+      }
+    } catch (err) {
+      console.warn('Failed to load live Scan Distribusi sheet:', err);
+    } finally {
+      setIsRefreshingScan(false);
     }
   };
 
@@ -447,6 +471,18 @@ export default function App() {
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Rekonsiliasi CHK10 vs WIP (Semua Line)</span>
                 </button>
+
+                <button
+                  onClick={() => setDashboardTab('scan_comparison')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                    dashboardTab === 'scan_comparison'
+                      ? 'bg-white text-indigo-700 shadow-sm'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  <span>Compare Scan In vs Scan Distribusi</span>
+                </button>
               </div>
             </div>
 
@@ -458,6 +494,7 @@ export default function App() {
                   <WipTable
                     items={wipItems}
                     chkItems={chkItems}
+                    scanItems={scanItems}
                     globalReportDate={globalReportDate}
                     setGlobalReportDate={setGlobalReportDate}
                     onDeleteItem={handleDeleteWipItem}
@@ -476,6 +513,15 @@ export default function App() {
                 onImportBulkChkItems={handleImportBulkChkItems}
                 onRefreshChkSheet={loadChkSheetData}
                 isRefreshingChkSheet={isRefreshingChkSheet}
+              />
+            )}
+
+            {dashboardTab === 'scan_comparison' && (
+              <ScanDistribusiComparison
+                wipItems={wipItems}
+                scanItems={scanItems}
+                onRefreshScan={loadScanDistribusiData}
+                isRefreshingScan={isRefreshingScan}
               />
             )}
           </>

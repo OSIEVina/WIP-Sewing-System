@@ -78,3 +78,12 @@ export interface LeaderSession {
   lineId: string;
   loginTime: string;
 }
+
+export interface ScanDistribusiItem {
+  id: string;
+  line: string;
+  spo: string;
+  date: string; // YYYY-MM-DD
+  size: string;
+  qtyPcs: number;
+}
