@@ -456,6 +456,7 @@ export default function App() {
         selectedLineId={selectedLineId || undefined}
         leaderNik={leaderNik}
         onOpenDataSource={() => setIsDataSourceModalOpen(true)}
+        onOpenGoogleSheets={() => setIsGoogleSheetsModalOpen(true)}
         onResetData={handleResetData}
         totalLines={lines.length}
         activeLinesCount={activeLinesCount}

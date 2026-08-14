@@ -172,25 +172,87 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const sampleAppsScriptCode = `function doPost(e) {
+  const sampleAppsScriptCode = `function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var wsWip = ss.getSheetByName("WIP Sewing Data");
+  if (!wsWip) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", wipItems: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var values = wsWip.getDataRange().getValues();
+  if (values.length < 2) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", wipItems: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var wipItems = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (!row[0]) continue;
+    wipItems.push({
+      id: String(row[0]),
+      lineId: String(row[1] || ''),
+      spo: String(row[2] || ''),
+      style: String(row[3] || ''),
+      color: String(row[4] || ''),
+      size: String(row[5] || ''),
+      qtyOrder: Number(row[6] || 0),
+      unit: String(row[7] || 'PCE'),
+      inHariIni: Number(row[8] || 0),
+      wip0: Number(row[9] || 0),
+      wip1: Number(row[10] || 0),
+      wip2: Number(row[11] || 0),
+      wip3: Number(row[12] || 0),
+      wip4: Number(row[13] || 0),
+      wip5: Number(row[14] || 0),
+      wipSewing: Number(row[15] || 0),
+      outSewing: Number(row[16] || 0),
+      chk3d: Number(row[17] || 0),
+      wipFinish: Number(row[18] || 0),
+      outPacking: Number(row[19] || 0),
+      normalHours: Number(row[20] || 0),
+      normalMp: Number(row[21] || 0),
+      overtimeHours: Number(row[22] || 0),
+      overtimeMp: Number(row[23] || 0),
+      date: String(row[24] || ''),
+      createdAt: String(row[25] || ''),
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: "success", wipItems: wipItems }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
   var data = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. WIP Sewing Sheet
   var wsWip = ss.getSheetByName("WIP Sewing Data") || ss.insertSheet("WIP Sewing Data");
   wsWip.clear();
-  wsWip.appendRow(["ID", "Line", "SPO", "Style", "Color", "Size", "Qty Order", "Unit", "In Hari Ini", "WIP 0", "WIP 1", "WIP 2", "WIP 3", "WIP 4", "WIP 5", "WIP Sewing", "Out Sewing", "CHK 3D", "WIP Finish", "Out Packing", "Tanggal"]);
-  data.wipItems.forEach(function(item) {
-    wsWip.appendRow([item.id, item.lineId, item.spo, item.style, item.color, item.size, item.qtyOrder, item.unit, item.inHariIni || 0, item.wip0 || 0, item.wip1 || 0, item.wip2 || 0, item.wip3 || 0, item.wip4 || 0, item.wip5 || 0, item.wipSewing || 0, item.outSewing || 0, item.chk3d || 0, item.wipFinish || 0, item.outPacking || 0, item.date || '']);
-  });
+  wsWip.appendRow(["ID", "Line", "SPO", "Style", "Color", "Size", "Qty Order", "Unit", "In Hari Ini", "WIP 0", "WIP 1", "WIP 2", "WIP 3", "WIP 4", "WIP 5", "WIP Sewing", "Out Sewing", "CHK 3D", "WIP Finish", "Out Packing", "Jam Normal", "MP Normal", "Jam Lembur", "MP Lembur", "Tanggal", "Created At"]);
+  
+  if (data.wipItems && data.wipItems.length > 0) {
+    data.wipItems.forEach(function(item) {
+      wsWip.appendRow([
+        item.id, item.lineId, item.spo, item.style, item.color, item.size,
+        item.qtyOrder, item.unit, item.inHariIni || 0, item.wip0 || 0,
+        item.wip1 || 0, item.wip2 || 0, item.wip3 || 0, item.wip4 || 0,
+        item.wip5 || 0, item.wipSewing || 0, item.outSewing || 0, item.chk3d || 0,
+        item.wipFinish || 0, item.outPacking || 0, item.normalHours || 0,
+        item.normalMp || 0, item.overtimeHours || 0, item.overtimeMp || 0,
+        item.date || '', item.createdAt || ''
+      ]);
+    });
+  }
 
   // 2. SPO Master Sheet
-  var wsSpo = ss.getSheetByName("SPO Master") || ss.insertSheet("SPO Master");
-  wsSpo.clear();
-  wsSpo.appendRow(["SPO#", "Style", "Color", "Qty Order", "Unit", "Daftar Size"]);
-  data.spoOptions.forEach(function(item) {
-    wsSpo.appendRow([item.spo, item.style, item.color, item.qtyOrder, item.unit, (item.sizes || []).join(', ')]);
-  });
+  if (data.spoOptions && data.spoOptions.length > 0) {
+    var wsSpo = ss.getSheetByName("SPO Master") || ss.insertSheet("SPO Master");
+    wsSpo.clear();
+    wsSpo.appendRow(["SPO#", "Style", "Color", "Qty Order", "Unit", "Daftar Size"]);
+    data.spoOptions.forEach(function(item) {
+      wsSpo.appendRow([item.spo, item.style, item.color, item.qtyOrder, item.unit, (item.sizes || []).join(', ')]);
+    });
+  }
 
   return ContentService.createTextOutput(JSON.stringify({status: "success"}))
     .setMimeType(ContentService.MimeType.JSON);

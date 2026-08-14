@@ -76,6 +76,18 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
+          {onOpenGoogleSheets && (
+            <button
+              onClick={onOpenGoogleSheets}
+              id="btn-google-sheets-sync"
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 transition shadow-xs"
+              title="Koneksi & Sync Google Spreadsheet"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Google Sheets</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenDataSource}
             id="btn-data-source"

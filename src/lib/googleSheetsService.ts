@@ -196,3 +196,91 @@ export async function populateGoogleSpreadsheet(
 
   return true;
 }
+
+/**
+ * Reads WIP Sewing Data directly from Google Sheets via Google Sheets API (v4)
+ */
+export async function fetchSpreadsheetWipData(accessToken: string, spreadsheetId: string): Promise<WipItem[]> {
+  const range = encodeURIComponent("'WIP Sewing Data'!A2:Z1000");
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gagal mengambil data dari Google Sheets: ${errText}`);
+  }
+
+  const result = await response.json();
+  const rows = result.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: String(row[0] || `wip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`),
+    lineId: String(row[1] || ''),
+    spo: String(row[2] || ''),
+    style: String(row[3] || ''),
+    color: String(row[4] || ''),
+    size: String(row[5] || ''),
+    qtyOrder: Number(row[6] || 0),
+    unit: String(row[7] || 'PCE'),
+    inHariIni: Number(row[8] || 0),
+    wip0: Number(row[9] || 0),
+    wip1: Number(row[10] || 0),
+    wip2: Number(row[11] || 0),
+    wip3: Number(row[12] || 0),
+    wip4: Number(row[13] || 0),
+    wip5: Number(row[14] || 0),
+    wipSewing: Number(row[15] || 0),
+    outSewing: Number(row[16] || 0),
+    chk3d: Number(row[17] || 0),
+    wipFinish: Number(row[18] || 0),
+    outPacking: Number(row[19] || 0),
+    normalHours: Number(row[20] || 0),
+    normalMp: Number(row[21] || 0),
+    overtimeHours: Number(row[22] || 0),
+    overtimeMp: Number(row[23] || 0),
+    date: String(row[24] || ''),
+    createdAt: String(row[25] || new Date().toISOString()),
+  }));
+}
+
+/**
+ * Pushes WIP data payload to Google Apps Script Web App
+ */
+export async function pushWebAppWipData(
+  webAppUrl: string,
+  payload: { wipItems: WipItem[]; spoOptions: SpoOption[]; chkItems?: ChkItem[] }
+): Promise<boolean> {
+  const response = await fetch(webAppUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'syncData',
+      timestamp: new Date().toISOString(),
+      wipItems: payload.wipItems,
+      spoOptions: payload.spoOptions,
+      chkItems: payload.chkItems || [],
+    }),
+  });
+  return true;
+}
+
+/**
+ * Reads WIP Sewing Data from Google Apps Script Web App
+ */
+export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> {
+  const url = webAppUrl.includes('?') ? `${webAppUrl}&action=getWip` : `${webAppUrl}?action=getWip`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const result = await response.json();
+  if (result && Array.isArray(result.wipItems)) {
+    return result.wipItems;
+  }
+  return [];
+}
+

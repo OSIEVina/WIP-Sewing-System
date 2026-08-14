@@ -3,13 +3,12 @@ export function safeSetItem(key: string, value: string): boolean {
     localStorage.setItem(key, value);
     return true;
   } catch (error) {
-    console.warn(`[Storage] Failed to set item "${key}" in localStorage:`, error);
-
-    // Attempt cleanup of non-essential caches to free up space
+    // Attempt cleanup of non-essential/large temporary caches to free up space
     const cacheKeysToClear = [
       'wip_sheet_scan_distribusi_cache',
       'wip_sheet_chk10_cache',
       'wip_sheet_spo_options',
+      'wip_sewing_spos',
     ];
 
     for (const cacheKey of cacheKeysToClear) {
@@ -22,12 +21,13 @@ export function safeSetItem(key: string, value: string): boolean {
       }
     }
 
-    // Try setting item again after clearing caches
+    // Try setting item again after clearing non-essential caches
     try {
       localStorage.setItem(key, value);
       return true;
     } catch (retryError) {
-      console.warn(`[Storage] Quota exceeded for "${key}". Data will persist in memory.`, retryError);
+      // Gracefully handle storage quota limit (data continues to live safely in active app state RAM)
+      console.info(`[Storage] Quota browser lokal (localStorage) penuh untuk "${key}". Data tetap aktif berjalan di memori browser (RAM).`);
       return false;
     }
   }
