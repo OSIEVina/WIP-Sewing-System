@@ -571,14 +571,14 @@ export const WipTable: React.FC<WipTableProps> = ({
             <tbody className="divide-y divide-slate-200 font-mono text-xs">
               {(() => {
                 const allMpMap = getAllLineManpower();
-                return lineDatePairs.map(({ lineId, date }) => {
+                return lineDatePairs.map(({ lineId, date }, pairIdx) => {
                   const key = `${cleanLine(lineId)}_${date}`;
                   const hasMp = !!allMpMap[key];
                   const mp = getLineManpower(lineId, date);
                   const devInfo = checkManpowerDeviation(mp);
 
                   return (
-                    <tr key={`${lineId}_${date}`} className="hover:bg-slate-50 transition-colors">
+                    <tr key={`${lineId}_${date}_${pairIdx}`} className="hover:bg-slate-50 transition-colors">
                       <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900 bg-slate-50/50">
                         LINE {lineId.toUpperCase()}
                       </td>
@@ -782,7 +782,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                 </td>
               </tr>
             ) : (
-              (Object.entries(spoGroups) as [string, WipItem[]][]).map(([spoCode, groupItems]) => {
+              (Object.entries(spoGroups) as [string, WipItem[]][]).map(([spoCode, groupItems], groupIdx) => {
                 // Calculate Totals for this SPO
                 const totalQty = groupItems.reduce((s, i) => s + i.qtyOrder, 0);
                 const totalInHariIni = groupItems.reduce((s, i) => s + i.inHariIni, 0);
@@ -806,8 +806,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                 }, 0);
 
                 return (
-                  <React.Fragment key={spoCode}>
-                    {groupItems.map((item) => {
+                  <React.Fragment key={`spo-grp-${spoCode}-${groupIdx}`}>
+                    {groupItems.map((item, itemIdx) => {
                       const scanInVal = item.inHariIni || 0;
                       const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
                       const wipSewingVal = wipStationSum > 0 ? wipStationSum : (item.wipSewing || 0);
@@ -816,7 +816,7 @@ export const WipTable: React.FC<WipTableProps> = ({
 
                       return (
                         <tr
-                          key={item.id}
+                          key={`wip-row-${item.id}-${itemIdx}`}
                           className="hover:bg-slate-50 transition-colors text-[11px]"
                         >
                           <td className="p-2.5 border-r border-slate-200 text-slate-600 font-semibold bg-slate-50/30">

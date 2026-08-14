@@ -358,7 +358,7 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
             ) : (
               filteredItems.map((item, idx) => (
                 <tr
-                  key={item.id}
+                  key={`chk-${item.id || idx}-${idx}`}
                   className={`hover:bg-purple-50/20 transition-colors ${
                     idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'
                   }`}
@@ -510,8 +510,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                     onChange={(e) => handleSpoChangeInForm(e.target.value, false)}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-700"
                   >
-                    {spoOptions.map((s) => (
-                      <option key={s.spo} value={s.spo}>
+                    {spoOptions.map((s, sIdx) => (
+                      <option key={`add-spo-${s.spo}-${sIdx}`} value={s.spo}>
                         {s.spo}
                       </option>
                     ))}
@@ -683,8 +683,8 @@ export const Chk10Table: React.FC<Chk10TableProps> = ({
                     onChange={(e) => handleSpoChangeInForm(e.target.value, true)}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-700"
                   >
-                    {spoOptions.map((s) => (
-                      <option key={s.spo} value={s.spo}>
+                    {spoOptions.map((s, sIdx) => (
+                      <option key={`edit-spo-${s.spo}-${sIdx}`} value={s.spo}>
                         {s.spo}
                       </option>
                     ))}

@@ -395,7 +395,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                               const chkVal = scanIn - (wSew + outS);
 
                               return (
-                                <tr key={item.id || idx} className="text-center hover:bg-slate-50">
+                                <tr key={`pdf-item-${item.id || idx}-${idx}`} className="text-center hover:bg-slate-50">
                                   <td className="border border-slate-300 p-1 font-bold">{lineId.toUpperCase()}</td>
                                   <td className="border border-slate-300 p-1 text-blue-700 font-bold">{item.spo}</td>
                                   <td className="border border-slate-300 p-1 text-left truncate max-w-[140px]">{item.style}</td>

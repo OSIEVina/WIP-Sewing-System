@@ -215,35 +215,45 @@ export async function fetchSpreadsheetWipData(accessToken: string, spreadsheetId
 
   const result = await response.json();
   const rows = result.values || [];
+  const seenIds = new Set<string>();
 
-  return rows.map((row: any[]) => ({
-    id: String(row[0] || `wip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`),
-    lineId: String(row[1] || ''),
-    spo: String(row[2] || ''),
-    style: String(row[3] || ''),
-    color: String(row[4] || ''),
-    size: String(row[5] || ''),
-    qtyOrder: Number(row[6] || 0),
-    unit: String(row[7] || 'PCE'),
-    inHariIni: Number(row[8] || 0),
-    wip0: Number(row[9] || 0),
-    wip1: Number(row[10] || 0),
-    wip2: Number(row[11] || 0),
-    wip3: Number(row[12] || 0),
-    wip4: Number(row[13] || 0),
-    wip5: Number(row[14] || 0),
-    wipSewing: Number(row[15] || 0),
-    outSewing: Number(row[16] || 0),
-    chk3d: Number(row[17] || 0),
-    wipFinish: Number(row[18] || 0),
-    outPacking: Number(row[19] || 0),
-    normalHours: Number(row[20] || 0),
-    normalMp: Number(row[21] || 0),
-    overtimeHours: Number(row[22] || 0),
-    overtimeMp: Number(row[23] || 0),
-    date: String(row[24] || ''),
-    createdAt: String(row[25] || new Date().toISOString()),
-  }));
+  return rows.map((row: any[], i: number) => {
+    let itemId = String(row[0] || '');
+    if (!itemId || itemId.includes('/') || seenIds.has(itemId)) {
+      itemId = `wip-${row[1] || ''}-${row[2] || ''}-${row[5] || ''}-${i}`;
+    }
+    seenIds.add(itemId);
+
+    return {
+      id: itemId,
+      lineId: String(row[1] || ''),
+      spo: String(row[2] || ''),
+      style: String(row[3] || ''),
+      color: String(row[4] || ''),
+      size: String(row[5] || ''),
+      qtyOrder: Number(row[6] || 0),
+      unit: String(row[7] || 'PCE'),
+      inHariIni: Number(row[8] || 0),
+      wip0: Number(row[9] || 0),
+      wip1: Number(row[10] || 0),
+      wip2: Number(row[11] || 0),
+      wip3: Number(row[12] || 0),
+      wip4: Number(row[13] || 0),
+      wip5: Number(row[14] || 0),
+      wipSewing: Number(row[15] || 0),
+      outSewing: Number(row[16] || 0),
+      chk3d: Number(row[17] || 0),
+      wipFinish: Number(row[18] || 0),
+      outPacking: Number(row[19] || 0),
+      normalHours: Number(row[20] || 0),
+      normalMp: Number(row[21] || 0),
+      overtimeHours: Number(row[22] || 0),
+      overtimeMp: Number(row[23] || 0),
+      date: String(row[24] || ''),
+      createdAt: String(row[25] || new Date().toISOString()),
+      updatedAt: String(row[25] || new Date().toISOString()),
+    };
+  });
 }
 
 /**
@@ -253,11 +263,11 @@ export async function pushWebAppWipData(
   webAppUrl: string,
   payload: { wipItems: WipItem[]; spoOptions: SpoOption[]; chkItems?: ChkItem[] }
 ): Promise<boolean> {
-  const response = await fetch(webAppUrl, {
+  await fetch(webAppUrl, {
     method: 'POST',
     mode: 'no-cors',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'text/plain',
     },
     body: JSON.stringify({
       action: 'syncData',
@@ -271,16 +281,119 @@ export async function pushWebAppWipData(
 }
 
 /**
- * Reads WIP Sewing Data from Google Apps Script Web App
+ * Reads WIP Sewing Data directly from Google Sheets public CSV export
+ */
+export async function fetchLiveWipSheetCsv(): Promise<WipItem[]> {
+  const url =
+    'https://docs.google.com/spreadsheets/d/1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E/gviz/tq?tqx=out:csv&sheet=WIP%20Sewing%20Data';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const parseCsvLine = (lineStr: string): string[] => {
+    const result: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < lineStr.length; i++) {
+      const c = lineStr[i];
+      if (c === '"') {
+        if (inQuotes && lineStr[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === ',' && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const clean = (val: string) => (val ? val.replace(/^"|"$/g, '') : '');
+
+  const items: WipItem[] = [];
+  const seenIds = new Set<string>();
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    if (row.length < 3 || (!clean(row[0]) && !clean(row[2]))) continue;
+
+    let itemId = clean(row[0]);
+    if (!itemId || itemId.includes('/') || seenIds.has(itemId)) {
+      itemId = `wip-${clean(row[1])}-${clean(row[2])}-${clean(row[5])}-${i}`;
+    }
+    seenIds.add(itemId);
+
+    items.push({
+      id: itemId,
+      lineId: clean(row[1]),
+      spo: clean(row[2]),
+      style: clean(row[3]),
+      color: clean(row[4]),
+      size: clean(row[5]),
+      qtyOrder: Number(clean(row[6])) || 0,
+      unit: clean(row[7]) || 'PCE',
+      inHariIni: Number(clean(row[8])) || 0,
+      wip0: Number(clean(row[9])) || 0,
+      wip1: Number(clean(row[10])) || 0,
+      wip2: Number(clean(row[11])) || 0,
+      wip3: Number(clean(row[12])) || 0,
+      wip4: Number(clean(row[13])) || 0,
+      wip5: Number(clean(row[14])) || 0,
+      wipSewing: Number(clean(row[15])) || 0,
+      outSewing: Number(clean(row[16])) || 0,
+      chk3d: Number(clean(row[17])) || 0,
+      wipFinish: Number(clean(row[18])) || 0,
+      outPacking: Number(clean(row[19])) || 0,
+      normalHours: Number(clean(row[20])) || 0,
+      normalMp: Number(clean(row[21])) || 0,
+      overtimeHours: Number(clean(row[22])) || 0,
+      overtimeMp: Number(clean(row[23])) || 0,
+      date: clean(row[24]),
+      createdAt: clean(row[25]) || new Date().toISOString(),
+      updatedAt: clean(row[25]) || new Date().toISOString(),
+    });
+  }
+  return items;
+}
+
+/**
+ * Reads WIP Sewing Data from Google Apps Script Web App with CSV fallback
  */
 export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> {
-  const url = webAppUrl.includes('?') ? `${webAppUrl}&action=getWip` : `${webAppUrl}?action=getWip`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const result = await response.json();
-  if (result && Array.isArray(result.wipItems)) {
-    return result.wipItems;
+  try {
+    const url = webAppUrl.includes('?') ? `${webAppUrl}&action=getWip` : `${webAppUrl}?action=getWip`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const result = await response.json();
+      if (result && Array.isArray(result.wipItems) && result.wipItems.length > 0) {
+        const seenIds = new Set<string>();
+        return result.wipItems.map((item: WipItem, idx: number) => {
+          let itemId = item.id;
+          if (!itemId || itemId.includes('/') || seenIds.has(itemId)) {
+            itemId = `wip-${item.lineId || ''}-${item.spo || ''}-${item.size || ''}-${idx}`;
+          }
+          seenIds.add(itemId);
+          return { ...item, id: itemId };
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Apps Script GET failed, attempting CSV fallback:', err);
   }
-  return [];
+
+  // Fallback: Read directly from Google Sheets public CSV export
+  try {
+    return await fetchLiveWipSheetCsv();
+  } catch (err) {
+    console.warn('Direct CSV fetch failed:', err);
+    return [];
+  }
 }
 

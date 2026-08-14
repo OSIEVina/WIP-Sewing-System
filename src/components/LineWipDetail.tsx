@@ -453,9 +453,9 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
                       );
                     })
                     .slice(0, 40)
-                    .map((opt) => (
+                    .map((opt, optIdx) => (
                       <button
-                        key={`${opt.spo}-${opt.style}-${opt.color}`}
+                        key={`${opt.spo}-${opt.style}-${opt.color}-${optIdx}`}
                         type="button"
                         onClick={() => handleSpoChange(opt.spo)}
                         className={`w-full text-left p-2 rounded-lg text-xs transition flex flex-col gap-0.5 hover:bg-blue-50 ${
@@ -527,10 +527,10 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
               id="select-size"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-blue-700 focus:outline-none focus:border-blue-500"
             >
-              {availableSizes.map((s) => {
+              {availableSizes.map((s, sIdx) => {
                 const qtyForSize = currentSpoOption?.sizeQtyMap?.[s];
                 return (
-                  <option key={s} value={s}>
+                  <option key={`${s}-${sIdx}`} value={s}>
                     {s} {qtyForSize !== undefined ? `(Qty: ${qtyForSize})` : ''}
                   </option>
                 );

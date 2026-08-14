@@ -733,11 +733,11 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row) => {
+              filteredRows.map((row, rowIdx) => {
                 const isExpanded = expandedKey === row.key;
 
                 return (
-                  <React.Fragment key={row.key}>
+                  <React.Fragment key={`recon-row-${row.key}-${rowIdx}`}>
                     <tr
                       className={`hover:bg-slate-50 transition-colors ${
                         !row.isMatch ? 'bg-rose-50/20' : ''
@@ -863,8 +863,8 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
-                                    {row.relatedChkLogs.map((log) => (
-                                      <tr key={log.id} className="hover:bg-purple-50/30">
+                                    {row.relatedChkLogs.map((log, logIdx) => (
+                                      <tr key={`log-${log.id || logIdx}-${logIdx}`} className="hover:bg-purple-50/30">
                                         <td className="p-2 font-bold text-purple-700">
                                           W{log.week}
                                         </td>

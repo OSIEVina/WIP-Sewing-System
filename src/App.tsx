@@ -395,23 +395,38 @@ export default function App() {
         i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
 
       const next = [...prev];
-      importedItems.forEach((newItem) => {
+      importedItems.forEach((newItem, importIdx) => {
         const targetDate = getItemDate(newItem);
         const idx = next.findIndex(
           (item) =>
-            item.id === newItem.id ||
+            (item.id && newItem.id && item.id === newItem.id) ||
             (cleanLine(item.lineId) === cleanLine(newItem.lineId) &&
               cleanSpo(item.spo) === cleanSpo(newItem.spo) &&
               cleanSize(item.size) === cleanSize(newItem.size) &&
               getItemDate(item) === targetDate)
         );
         if (idx >= 0) {
-          next[idx] = { ...next[idx], ...newItem };
+          next[idx] = { ...next[idx], ...newItem, id: next[idx].id || newItem.id };
         } else {
-          next.unshift(newItem);
+          const isIdUnique = newItem.id && !next.some((x) => x.id === newItem.id);
+          const safeId = isIdUnique
+            ? newItem.id
+            : `wip-imp-${newItem.lineId}-${newItem.spo}-${newItem.size}-${importIdx}-${Date.now()}`;
+          next.unshift({ ...newItem, id: safeId });
         }
       });
-      return next;
+
+      // Deduplicate next array by ID
+      const seenIds = new Set<string>();
+      return next.map((item, idx) => {
+        if (!item.id || seenIds.has(item.id)) {
+          const uniqueId = `wip-dedup-${item.lineId}-${item.spo}-${item.size}-${idx}`;
+          seenIds.add(uniqueId);
+          return { ...item, id: uniqueId };
+        }
+        seenIds.add(item.id);
+        return item;
+      });
     });
   };
 
