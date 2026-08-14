@@ -19,7 +19,8 @@ import {
 import {
   requestGoogleAccessToken,
   createGoogleSpreadsheet,
-  populateGoogleSpreadsheet
+  populateGoogleSpreadsheet,
+  fetchWebAppWipData
 } from '../lib/googleSheetsService';
 import { safeGetItem, safeSetItem } from '../utils/storage';
 
@@ -30,6 +31,7 @@ interface GoogleSheetsExportModalProps {
   chkItems: ChkItem[];
   spoOptions: SpoOption[];
   lines: ProductionLine[];
+  onImportWipItems?: (items: WipItem[]) => void;
 }
 
 export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = ({
@@ -39,6 +41,7 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
   chkItems,
   spoOptions,
   lines,
+  onImportWipItems,
 }) => {
   const [exportMode, setExportMode] = useState<'oauth' | 'webapp'>('oauth');
   
@@ -145,7 +148,7 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
         spoOptions,
       };
 
-      const response = await fetch(trimmedUrl, {
+      await fetch(trimmedUrl, {
         method: 'POST',
         mode: 'no-cors', // Apps script webapp cors workaround
         headers: {
@@ -160,6 +163,35 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
     } catch (err: any) {
       console.error('WebApp Export Error:', err);
       setError(err.message || 'Gagal mengirim data ke Web App URL.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFetchWebApp = async () => {
+    const trimmedUrl = webAppUrl.trim();
+    if (!trimmedUrl) {
+      setError('Masukkan URL Apps Script Web App Anda terlebih dahulu.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    setStatusMessage('Menarik data terbaru dari Google Spreadsheet...');
+
+    try {
+      const fetchedWip = await fetchWebAppWipData(trimmedUrl);
+      if (fetchedWip && fetchedWip.length > 0) {
+        if (onImportWipItems) {
+          onImportWipItems(fetchedWip);
+        }
+        setStatusMessage(`Berhasil memuat ${fetchedWip.length} entri WIP dari Google Spreadsheet!`);
+      } else {
+        setStatusMessage('Spreadsheet belum memiliki data WIP atau format belum sesuai.');
+      }
+    } catch (err: any) {
+      console.error('WebApp Fetch Error:', err);
+      setError(err.message || 'Gagal menarik data dari Web App. Pastikan fungsi doGet sudah di-deploy.');
     } finally {
       setIsLoading(false);
     }
@@ -521,18 +553,31 @@ function doPost(e) {
           </button>
 
           {!createdSheetUrl && (
-            <button
-              onClick={exportMode === 'oauth' ? handleExportOAuth : handleExportWebApp}
-              disabled={isLoading}
-              className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition disabled:opacity-50 cursor-pointer"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              {exportMode === 'webapp' && (
+                <button
+                  onClick={handleFetchWebApp}
+                  disabled={isLoading}
+                  className="flex items-center space-x-1.5 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200 transition disabled:opacity-50 cursor-pointer"
+                  title="Tarik & Muat Data WIP Terbaru dari Google Spreadsheet"
+                >
+                  <Globe className="w-4 h-4 text-blue-600" />
+                  <span>Tarik Data Terbaru</span>
+                </button>
               )}
-              <span>{exportMode === 'oauth' ? 'Export via OAuth API' : 'Kirim ke Spreadsheet'}</span>
-            </button>
+              <button
+                onClick={exportMode === 'oauth' ? handleExportOAuth : handleExportWebApp}
+                disabled={isLoading}
+                className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition disabled:opacity-50 cursor-pointer"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                <span>{exportMode === 'oauth' ? 'Export via OAuth API' : 'Kirim ke Spreadsheet'}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

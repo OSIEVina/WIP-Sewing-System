@@ -4,6 +4,7 @@ import { INITIAL_LINES, INITIAL_SPO_OPTIONS, INITIAL_WIP_ITEMS, INITIAL_CHK_ITEM
 import { fetchLiveSpoOptions } from './data/spoSheetService';
 import { fetchLiveChk10Items } from './data/chkSheetService';
 import { fetchLiveScanDistribusiItems } from './data/scanDistribusiSheetService';
+import { pushWebAppWipData, fetchWebAppWipData } from './lib/googleSheetsService';
 import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
@@ -208,6 +209,41 @@ export default function App() {
   useEffect(() => {
     safeSetItem('wip_sewing_chk_items', JSON.stringify(chkItems));
   }, [chkItems]);
+
+  // Auto-sync background push to Google Sheets Web App whenever WIP / SPO / CHK updates
+  useEffect(() => {
+    const webAppUrl = safeGetItem('custom_google_webapp_url');
+    const autoSync = safeGetItem('google_sheets_autosync');
+    if (!webAppUrl || autoSync === 'false') return;
+
+    const timer = setTimeout(() => {
+      pushWebAppWipData(webAppUrl, { wipItems, spoOptions, chkItems }).catch((err) => {
+        console.warn('Auto push Google Sheets background notice:', err);
+      });
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [wipItems, spoOptions, chkItems]);
+
+  // Background Auto-Poll from Google Sheets Web App every 10 seconds to merge inputs from other leaders
+  useEffect(() => {
+    const pollBackgroundData = async () => {
+      const webAppUrl = safeGetItem('custom_google_webapp_url');
+      if (!webAppUrl) return;
+      try {
+        const fetchedWip = await fetchWebAppWipData(webAppUrl);
+        if (fetchedWip && fetchedWip.length > 0) {
+          handleImportWipItems(fetchedWip);
+        }
+      } catch (err) {
+        // Ignore background polling network glitches
+      }
+    };
+
+    pollBackgroundData();
+    const interval = setInterval(pollBackgroundData, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handlers
   const handleSelectLineClick = (lineId: string) => {
@@ -618,6 +654,7 @@ export default function App() {
         chkItems={chkItems}
         spoOptions={spoOptions}
         lines={lines}
+        onImportWipItems={handleImportWipItems}
       />
 
       {/* Footer */}
