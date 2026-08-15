@@ -1,6 +1,6 @@
 import { WipItem, ChkItem, SpoOption } from '../types';
 import { safeGetItem } from '../utils/storage';
-import { normalizeDateStr } from '../utils/date';
+import { normalizeDateStr, getTodayDateStr } from '../utils/date';
 
 export const DEFAULT_SPREADSHEET_ID = '1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E';
 export const DEFAULT_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/edit`;
@@ -160,6 +160,35 @@ export async function createGoogleSpreadsheet(accessToken: string, title?: strin
 }
 
 /**
+ * Deduplicates WIP items strictly by Line + SPO + Size + Date to prevent duplicate rows in Google Sheets
+ */
+export function deduplicateWipItemsForExport(items: WipItem[]): WipItem[] {
+  const map = new Map<string, WipItem>();
+  const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
+  const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+  const getItemDate = (i: WipItem) =>
+    normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : '')) || getTodayDateStr();
+
+  items.forEach((item) => {
+    if (!item.spo || !item.lineId) return;
+    const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanSize(item.size)}|${getItemDate(item)}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, item);
+    } else {
+      const exTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      const curTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      if (curTime >= exTime) {
+        map.set(key, item);
+      }
+    }
+  });
+
+  return Array.from(map.values());
+}
+
+/**
  * Populates data rows into the Google Spreadsheet
  */
 export async function populateGoogleSpreadsheet(
@@ -171,6 +200,8 @@ export async function populateGoogleSpreadsheet(
     spoOptions: SpoOption[];
   }
 ) {
+  const cleanWipItems = deduplicateWipItemsForExport(data.wipItems);
+
   // 1. Format WIP Sewing Data
   const wipHeaders = [
     'ID', 'Line ID', 'SPO', 'Style', 'Color', 'Size', 'Qty Order', 'Unit',
@@ -180,7 +211,7 @@ export async function populateGoogleSpreadsheet(
     'Pengisi / Leader', 'Updated At'
   ];
 
-  const wipRows = data.wipItems.map((item) => [
+  const wipRows = cleanWipItems.map((item) => [
     item.id,
     item.lineId,
     item.spo,
@@ -365,10 +396,12 @@ export async function pushWebAppWipData(
   webAppUrl: string,
   payload: { wipItems: WipItem[]; spoOptions: SpoOption[]; chkItems?: ChkItem[] }
 ): Promise<boolean> {
+  const cleanWipItems = deduplicateWipItemsForExport(payload.wipItems);
+
   const jsonString = JSON.stringify({
     action: 'syncData',
     timestamp: new Date().toISOString(),
-    wipItems: payload.wipItems,
+    wipItems: cleanWipItems,
     spoOptions: payload.spoOptions,
     chkItems: payload.chkItems || [],
   });

@@ -436,8 +436,23 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
         </div>
       </div>
 
-      {/* Main Form Box */}
+      {/* Main Form Box (Add SPO to Table) */}
       <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-2xl p-6 card-shadow space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-blue-600" />
+              <span>Tambah SPO & Size ke Line {lineId}</span>
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Pilih SPO & Size untuk ditambahkan ke tabel di bawah. Pengisian angka WIP & Output dilakukan di tabel bawah.
+            </p>
+          </div>
+          <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+            Form Penambah SPO
+          </span>
+        </div>
+
         {/* Row 1: SPO, Style, Color Selectors */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* SPO Selector with Search */}
@@ -620,12 +635,12 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
 
 
-        {/* Submit Save Button */}
+        {/* Submit Add Button */}
         <div className="flex items-center justify-end gap-3 pt-2">
           {showSuccessToast && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 animate-fadeIn font-semibold">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Data disimpan & sinkron ke Google Spreadsheet!</span>
+              <span>SPO berhasil ditambahkan ke tabel di bawah!</span>
             </div>
           )}
 
@@ -634,8 +649,8 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             id="btn-simpan-wip"
             className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-[0.98] cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            <span>Simpan Laporan</span>
+            <Plus className="w-4 h-4" />
+            <span>+ Tambahkan SPO ke Tabel Bawah</span>
           </button>
         </div>
       </form>

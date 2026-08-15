@@ -25,7 +25,7 @@ import { OutputReconciliation } from './components/OutputReconciliation';
 import { ScanDistribusiComparison } from './components/ScanDistribusiComparison';
 import { DataSourceModal } from './components/DataSourceModal';
 import { GoogleSheetsExportModal } from './components/GoogleSheetsExportModal';
-import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft, Calendar, Check } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft, Calendar, Check, Loader2 } from 'lucide-react';
 
 export default function App() {
   // Navigation State
@@ -86,7 +86,9 @@ export default function App() {
   });
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [isSyncingSpreadsheet, setIsSyncingSpreadsheet] = useState<boolean>(false);
   const userHasMutatedWipRef = useRef<boolean>(false);
+  const lastLocalMutationTimeRef = useRef<number>(0);
 
   const [chkItems, setChkItems] = useState<ChkItem[]>(() => {
     const saved = safeGetItem('wip_sewing_chk_items');
@@ -220,37 +222,85 @@ export default function App() {
     if (!webAppUrl || autoSync === 'false' || !userHasMutatedWipRef.current) return;
 
     setSyncStatus('syncing');
+    setIsSyncingSpreadsheet(true);
+
     const timer = setTimeout(async () => {
       try {
         await pushWebAppWipData(webAppUrl, { wipItems, spoOptions, chkItems });
         setSyncStatus('synced');
         userHasMutatedWipRef.current = false;
+        lastLocalMutationTimeRef.current = Date.now();
+        setIsSyncingSpreadsheet(false);
         setTimeout(() => {
           setSyncStatus((curr) => (curr === 'synced' ? 'idle' : curr));
-        }, 3500);
+        }, 3000);
       } catch (err) {
         console.warn('Auto push Google Sheets background notice:', err);
         setSyncStatus('error');
+        setIsSyncingSpreadsheet(false);
       }
-    }, 1000);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [wipItems]);
 
-  // Background Auto-Poll from Google Sheets Web App every 5 seconds to synchronize live data & line leaders between all active users
+  // Background Auto-Poll from Google Sheets Web App with conflict-free smart merge
   useEffect(() => {
     const pollBackgroundData = async () => {
       if (userHasMutatedWipRef.current) return;
+      // Do not overwrite if user locally mutated within 25 seconds
+      if (Date.now() - lastLocalMutationTimeRef.current < 25000) return;
+
       const webAppUrl = getEffectiveWebAppUrl();
       if (!webAppUrl) return;
       try {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
-        if (fetchedWip !== null && Array.isArray(fetchedWip)) {
+        if (fetchedWip !== null && Array.isArray(fetchedWip) && fetchedWip.length > 0) {
           setWipItems((current) => {
-            // When Google Sheets is the Single Source of Truth, fetchedWip replaces local state directly if changed
-            if (JSON.stringify(current) !== JSON.stringify(fetchedWip)) {
-              safeSetItem('wip_sewing_items', JSON.stringify(fetchedWip));
-              return fetchedWip;
+            const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
+            const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+            const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+            const getItemDate = (i: WipItem) =>
+              normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+            const localMap = new Map<string, WipItem>();
+            current.forEach((item) => {
+              const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanSize(item.size)}|${getItemDate(item)}`;
+              localMap.set(key, item);
+            });
+
+            const merged: WipItem[] = [];
+            const processedKeys = new Set<string>();
+
+            fetchedWip.forEach((remoteItem) => {
+              const key = `${cleanLine(remoteItem.lineId)}|${cleanSpo(remoteItem.spo)}|${cleanSize(remoteItem.size)}|${getItemDate(remoteItem)}`;
+              processedKeys.add(key);
+              const local = localMap.get(key);
+              if (!local) {
+                merged.push(remoteItem);
+              } else {
+                const localTime = new Date(local.updatedAt || local.createdAt || 0).getTime();
+                const remoteTime = new Date(remoteItem.updatedAt || remoteItem.createdAt || 0).getTime();
+                // If local timestamp is newer or equal, preserve local data!
+                if (localTime >= remoteTime) {
+                  merged.push(local);
+                } else {
+                  merged.push(remoteItem);
+                }
+              }
+            });
+
+            // Keep any local item not present in remote yet
+            current.forEach((localItem) => {
+              const key = `${cleanLine(localItem.lineId)}|${cleanSpo(localItem.spo)}|${cleanSize(localItem.size)}|${getItemDate(localItem)}`;
+              if (!processedKeys.has(key)) {
+                merged.push(localItem);
+              }
+            });
+
+            if (JSON.stringify(current) !== JSON.stringify(merged)) {
+              safeSetItem('wip_sewing_items', JSON.stringify(merged));
+              return merged;
             }
             return current;
           });
@@ -291,7 +341,7 @@ export default function App() {
     };
 
     pollBackgroundData();
-    const interval = setInterval(pollBackgroundData, 5000);
+    const interval = setInterval(pollBackgroundData, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -789,6 +839,33 @@ export default function App() {
         onImportWipItems={handleImportWipItems}
         onClearAllWip={handleClearAllWip}
       />
+
+      {/* Fullscreen Syncing Loading Overlay (Prevents mis-clicks and assures clean single-input persistence) */}
+      {isSyncingSpreadsheet && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center p-6 select-none animate-fadeIn text-white">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl flex flex-col items-center space-y-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center">
+                <Loader2 className="w-9 h-9 text-blue-400 animate-spin" />
+              </div>
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center absolute -bottom-1 -right-1 border-2 border-slate-900 shadow-md">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-white tracking-wide">
+                Menyinkronkan ke Spreadsheet...
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Mohon tunggu 1–2 detik, data sedang dicatat ke Google Sheets. Layar dikunci sebentar agar data tersimpan sempurna tanpa double.
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full w-full animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 font-medium">
