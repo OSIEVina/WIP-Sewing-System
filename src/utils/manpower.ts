@@ -1,5 +1,6 @@
-import { LineManpower } from '../types';
+import { LineManpower, WipItem } from '../types';
 import { safeGetItem, safeSetItem } from './storage';
+import { normalizeDateStr } from './date';
 
 const STORAGE_KEY = 'wip_sewing_line_manpower';
 
@@ -15,15 +16,46 @@ export function getAllLineManpower(): Record<string, LineManpower> {
   }
 }
 
-export function getLineManpower(lineId: string, date: string): LineManpower {
+export function getLineManpower(lineId: string, date: string, wipItems?: WipItem[]): LineManpower {
+  const normDate = normalizeDateStr(date);
+  const cleanLine = cleanLineId(lineId);
   const all = getAllLineManpower();
-  const key = `${cleanLineId(lineId)}_${date}`;
+  const key = `${cleanLine}_${normDate}`;
+  
   if (all[key]) {
     return all[key];
   }
+
+  // Fallback: check if any WIP item on this Line & Date already has manpower filled
+  if (wipItems && Array.isArray(wipItems)) {
+    const getItemDate = (i: WipItem) =>
+      normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+    const found = wipItems.find(
+      (item) =>
+        cleanLineId(item.lineId) === cleanLine &&
+        getItemDate(item) === normDate &&
+        (item.normalHours !== undefined || item.normalMp !== undefined || item.overtimeHours !== undefined || item.overtimeMp !== undefined)
+    );
+
+    if (found) {
+      const fromItem: LineManpower = {
+        lineId: cleanLine,
+        date: normDate,
+        normalHours: found.normalHours !== undefined ? found.normalHours : 7,
+        normalMp: found.normalMp !== undefined ? found.normalMp : 25,
+        overtimeHours: found.overtimeHours !== undefined ? found.overtimeHours : 0,
+        overtimeMp: found.overtimeMp !== undefined ? found.overtimeMp : 0,
+      };
+      // Save it so future calls are instantaneous
+      saveLineManpower(fromItem);
+      return fromItem;
+    }
+  }
+
   return {
-    lineId,
-    date,
+    lineId: cleanLine,
+    date: normDate,
     normalHours: 7,
     normalMp: 25,
     overtimeHours: 0,
@@ -32,18 +64,24 @@ export function getLineManpower(lineId: string, date: string): LineManpower {
 }
 
 export function saveLineManpower(data: LineManpower): void {
+  const normDate = normalizeDateStr(data.date);
+  const cleanLine = cleanLineId(data.lineId);
   const all = getAllLineManpower();
-  const key = `${cleanLineId(data.lineId)}_${data.date}`;
+  const key = `${cleanLine}_${normDate}`;
   all[key] = {
     ...data,
+    lineId: cleanLine,
+    date: normDate,
     updatedAt: new Date().toISOString(),
   };
   safeSetItem(STORAGE_KEY, JSON.stringify(all));
 }
 
 export function deleteLineManpower(lineId: string, date: string): void {
+  const normDate = normalizeDateStr(date);
+  const cleanLine = cleanLineId(lineId);
   const all = getAllLineManpower();
-  const key = `${cleanLineId(lineId)}_${date}`;
+  const key = `${cleanLine}_${normDate}`;
   if (all[key]) {
     delete all[key];
     safeSetItem(STORAGE_KEY, JSON.stringify(all));

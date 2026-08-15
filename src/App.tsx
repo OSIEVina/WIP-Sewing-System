@@ -14,6 +14,7 @@ import {
 } from './lib/googleSheetsService';
 import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
 import { normalizeDateStr, getTodayDateStr } from './utils/date';
+import { saveLineManpower, getLineManpower } from './utils/manpower';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
 import { LoginLeaderModal } from './components/LoginLeaderModal';
@@ -462,6 +463,37 @@ export default function App() {
         next[existingIndex] = itemWithMeta;
       } else {
         next = [itemWithMeta, ...prev];
+      }
+
+      // Automatically cascade Manpower & Jam Kerja to ALL other entries on the SAME Line and Date!
+      const targetLine = cleanLine(updatedItem.lineId);
+      const nH = updatedItem.normalHours !== undefined ? updatedItem.normalHours : 7;
+      const nM = updatedItem.normalMp !== undefined ? updatedItem.normalMp : 25;
+      const oH = updatedItem.overtimeHours !== undefined ? updatedItem.overtimeHours : 0;
+      const oM = updatedItem.overtimeMp !== undefined ? updatedItem.overtimeMp : 0;
+
+      if (targetLine) {
+        saveLineManpower({
+          lineId: targetLine,
+          date: targetDate,
+          normalHours: nH,
+          normalMp: nM,
+          overtimeHours: oH,
+          overtimeMp: oM,
+        });
+
+        next = next.map((item) => {
+          if (cleanLine(item.lineId) === targetLine && getItemDate(item) === targetDate) {
+            return {
+              ...item,
+              normalHours: nH,
+              normalMp: nM,
+              overtimeHours: oH,
+              overtimeMp: oM,
+            };
+          }
+          return item;
+        });
       }
 
       safeSetItem('wip_sewing_items', JSON.stringify(next));

@@ -126,14 +126,14 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
 
-  // Load line-level Manpower data on lineId or entryDate change
+  // Load line-level Manpower data on lineId, entryDate, or wipItems change
   useEffect(() => {
-    const mp = getLineManpower(lineId, entryDate);
+    const mp = getLineManpower(lineId, entryDate, wipItems);
     setNormalHours(mp.normalHours);
     setNormalMp(mp.normalMp);
     setOvertimeHours(mp.overtimeHours);
     setOvertimeMp(mp.overtimeMp);
-  }, [lineId, entryDate]);
+  }, [lineId, entryDate, wipItems]);
 
   // Save manpower whenever inputs change
   const handleManpowerChange = (

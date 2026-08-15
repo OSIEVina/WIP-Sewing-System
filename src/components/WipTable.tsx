@@ -1207,12 +1207,12 @@ export const WipTable: React.FC<WipTableProps> = ({
                 </div>
               </div>
 
-              {/* Group 3: Hasil Sewing & Quality Check */}
+              {/* Group 3: Output Sewing & Packing */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Hasil Sewing & Quality Check
+                  Output Sewing & Packing
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   {[
                     {
                       label: 'Output Sewing',
@@ -1221,30 +1221,6 @@ export const WipTable: React.FC<WipTableProps> = ({
                       color: 'text-emerald-700',
                       border: 'border-emerald-300',
                       bg: 'bg-emerald-50/40',
-                    },
-                    {
-                      label: 'CHK10',
-                      key: 'chk3d' as const,
-                      val: editModalItem.chk3d,
-                      color: 'text-purple-700',
-                      border: 'border-purple-200',
-                      bg: 'bg-purple-50/30',
-                    },
-                    {
-                      label: 'CHK10 SCAN',
-                      key: 'chk10Scan' as const,
-                      val: editModalItem.chk10Scan !== undefined ? editModalItem.chk10Scan : 0,
-                      color: 'text-indigo-700',
-                      border: 'border-indigo-300',
-                      bg: 'bg-indigo-50/30',
-                    },
-                    {
-                      label: 'WIP Finishing',
-                      key: 'wipFinish' as const,
-                      val: editModalItem.wipFinish,
-                      color: 'text-amber-700',
-                      border: 'border-amber-200',
-                      bg: 'bg-amber-50/30',
                     },
                     {
                       label: 'Out Packing',
@@ -1361,6 +1337,28 @@ export const WipTable: React.FC<WipTableProps> = ({
                 e.preventDefault();
                 saveLineManpower(editingManpower);
                 setManpowerTick((prev) => prev + 1);
+
+                // Cascade changes to all existing items for this line and date
+                if (onUpdateItem) {
+                  const targetLine = cleanLine(editingManpower.lineId);
+                  const normDate = normalizeDateStr(editingManpower.date);
+                  items
+                    .filter(
+                      (it) =>
+                        cleanLine(it.lineId) === targetLine &&
+                        getItemDate(it) === normDate
+                    )
+                    .forEach((it) => {
+                      onUpdateItem({
+                        ...it,
+                        normalHours: editingManpower.normalHours,
+                        normalMp: editingManpower.normalMp,
+                        overtimeHours: editingManpower.overtimeHours,
+                        overtimeMp: editingManpower.overtimeMp,
+                      });
+                    });
+                }
+
                 setEditingManpower(null);
               }}
               className="p-6 space-y-4"
