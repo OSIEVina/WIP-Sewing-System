@@ -160,7 +160,8 @@ export async function populateGoogleSpreadsheet(
     'ID', 'Line ID', 'SPO', 'Style', 'Color', 'Size', 'Qty Order', 'Unit',
     'In Hari Ini', 'WIP 0', 'WIP 1', 'WIP 2', 'WIP 3', 'WIP 4', 'WIP 5',
     'WIP Sewing', 'Out Sewing', 'CHK 3D', 'WIP Finish', 'Out Packing',
-    'Jam Normal', 'MP Normal', 'Jam Lembur', 'MP Lembur', 'Tanggal', 'Created At'
+    'Jam Normal', 'MP Normal', 'Jam Lembur', 'MP Lembur', 'Tanggal', 'Created At',
+    'Pengisi / Leader', 'Updated At'
   ];
 
   const wipRows = data.wipItems.map((item) => [
@@ -190,6 +191,8 @@ export async function populateGoogleSpreadsheet(
     item.overtimeMp || 0,
     item.date || '',
     item.createdAt || '',
+    item.updatedBy || item.leaderNik || '',
+    item.updatedAt || item.createdAt || '',
   ]);
 
   // 2. Format SPO Master Data
@@ -293,7 +296,10 @@ export async function fetchSpreadsheetWipData(accessToken: string, spreadsheetId
       overtimeMp: Number(row[23] || 0),
       date: String(row[24] || ''),
       createdAt: String(row[25] || new Date().toISOString()),
-      updatedAt: String(row[25] || new Date().toISOString()),
+      updatedBy: String(row[26] || ''),
+      leaderNik: String(row[26] || ''),
+      leaderName: String(row[26] || ''),
+      updatedAt: String(row[27] || row[25] || new Date().toISOString()),
     };
   });
 }
@@ -416,7 +422,10 @@ export async function fetchLiveWipSheetCsv(): Promise<WipItem[]> {
       overtimeMp: Number(clean(row[23])) || 0,
       date: clean(row[24]),
       createdAt: clean(row[25]) || new Date().toISOString(),
-      updatedAt: clean(row[25]) || new Date().toISOString(),
+      updatedBy: clean(row[26]) || '',
+      leaderNik: clean(row[26]) || '',
+      leaderName: clean(row[26]) || '',
+      updatedAt: clean(row[27]) || clean(row[25]) || new Date().toISOString(),
     });
   }
   return items;

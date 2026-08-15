@@ -307,6 +307,9 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       normalMp,
       overtimeHours,
       overtimeMp,
+      leaderNik,
+      leaderName: leaderNik,
+      updatedBy: leaderNik,
       date: entryDate,
     });
 
@@ -324,22 +327,49 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
     '2XL-PR',
   ];
 
+  const lineWipEntries = (wipItems || []).filter(
+    (w) => w.lineId?.trim().toUpperCase() === lineId.trim().toUpperCase()
+  );
+
+  const contributors = Array.from(
+    new Set(
+      lineWipEntries
+        .map((w) => w.updatedBy || w.leaderNik || '')
+        .filter((n) => Boolean(n && n.trim()))
+    )
+  );
+
+  const latestEntry = [...lineWipEntries].sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime()
+  )[0];
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-6 space-y-6 text-slate-900">
       {/* Top Banner Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 p-5 rounded-2xl card-shadow">
         <div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center flex-wrap gap-2">
             <h1 className="text-2xl font-black font-mono tracking-wider text-blue-600">
               LINE {lineId}
             </h1>
             <span className="text-xs font-mono font-semibold bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">
-              NIK: {leaderNik}
+              Login: {leaderNik}
             </span>
+            {latestEntry?.updatedBy && (
+              <span className="text-xs font-medium bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Terakhir diisi oleh: <strong>{latestEntry.updatedBy}</strong>
+              </span>
+            )}
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Input WIP Production &bull; Leader Entry Dashboard
-          </p>
+          {contributors.length > 0 && (
+            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+              <span>Pengisi Line {lineId} Hari Ini:</span>
+              <strong className="text-slate-800 font-semibold">{contributors.join(', ')}</strong>
+            </p>
+          )}
         </div>
 
         <button

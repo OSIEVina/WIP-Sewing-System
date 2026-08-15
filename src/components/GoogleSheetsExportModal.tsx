@@ -362,7 +362,11 @@ function doGet(e) {
         overtimeHours: Number(row[22] || 0),
         overtimeMp: Number(row[23] || 0),
         date: String(row[24] || ''),
-        createdAt: String(row[25] || '')
+        createdAt: String(row[25] || ''),
+        updatedBy: String(row[26] || ''),
+        leaderNik: String(row[26] || ''),
+        leaderName: String(row[26] || ''),
+        updatedAt: String(row[27] || row[25] || '')
       });
     }
     return ContentService.createTextOutput(JSON.stringify({ status: "success", wipItems: wipItems }))
@@ -398,7 +402,8 @@ function doPost(e) {
       "ID", "Line", "SPO", "Style", "Color", "Size", "Qty Order", "Unit",
       "In Hari Ini", "WIP 0", "WIP 1", "WIP 2", "WIP 3", "WIP 4", "WIP 5",
       "WIP Sewing", "Out Sewing", "CHK 3D", "WIP Finish", "Out Packing",
-      "Jam Normal", "MP Normal", "Jam Lembur", "MP Lembur", "Tanggal", "Created At"
+      "Jam Normal", "MP Normal", "Jam Lembur", "MP Lembur", "Tanggal", "Created At",
+      "Pengisi / Leader", "Updated At"
     ];
     
     if (data.wipItems && data.wipItems.length > 0) {
@@ -444,7 +449,9 @@ function doPost(e) {
           Number(item.overtimeHours || 0),
           Number(item.overtimeMp || 0),
           String(item.date || ''),
-          String(item.createdAt || new Date().toISOString())
+          String(item.createdAt || new Date().toISOString()),
+          String(item.updatedBy || item.leaderNik || ''),
+          String(item.updatedAt || item.createdAt || new Date().toISOString())
         ];
         rowMap[itemKey] = rowData;
       });

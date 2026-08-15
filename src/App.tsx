@@ -229,7 +229,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [wipItems]);
 
-  // Background Auto-Poll from Google Sheets Web App every 15 seconds to reflect additions, edits, & deletions from Google Spreadsheet
+  // Background Auto-Poll from Google Sheets Web App every 5 seconds to synchronize live data & line leaders between all active users
   useEffect(() => {
     const pollBackgroundData = async () => {
       if (userHasMutatedWipRef.current) return;
@@ -237,8 +237,45 @@ export default function App() {
       if (!webAppUrl) return;
       try {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
-        if (fetchedWip) {
-          setWipItems(fetchedWip);
+        if (fetchedWip && fetchedWip.length > 0) {
+          setWipItems((current) => {
+            if (current.length !== fetchedWip.length || JSON.stringify(current) !== JSON.stringify(fetchedWip)) {
+              return fetchedWip;
+            }
+            return current;
+          });
+
+          // Sync lines leader info based on fetchedWip data
+          setLines((prevLines) => {
+            let changed = false;
+            const updated = prevLines.map((line) => {
+              const lineWips = fetchedWip.filter(
+                (w) => w.lineId?.trim().toUpperCase() === line.id.trim().toUpperCase()
+              );
+              if (lineWips.length > 0) {
+                const latestWip = [...lineWips].sort(
+                  (a, b) =>
+                    new Date(b.updatedAt || b.createdAt || 0).getTime() -
+                    new Date(a.updatedAt || a.createdAt || 0).getTime()
+                )[0];
+                const latestLeader =
+                  latestWip.updatedBy || latestWip.leaderNik || latestWip.leaderName;
+                if (latestLeader && line.currentLeaderNik !== latestLeader) {
+                  changed = true;
+                  return {
+                    ...line,
+                    currentLeaderNik: latestLeader,
+                    lastUpdatedBy: latestLeader,
+                    status: 'in_progress' as const,
+                  };
+                }
+              }
+              return line;
+            });
+            return changed ? updated : prevLines;
+          });
+        } else if (fetchedWip && fetchedWip.length === 0 && safeGetItem('google_sheets_imported') === 'true') {
+          setWipItems([]);
         }
       } catch (err) {
         // Ignore background polling network glitches
@@ -246,7 +283,7 @@ export default function App() {
     };
 
     pollBackgroundData();
-    const interval = setInterval(pollBackgroundData, 15000);
+    const interval = setInterval(pollBackgroundData, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -289,14 +326,39 @@ export default function App() {
 
   const handleSaveWipItem = (newItemData: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => {
     userHasMutatedWipRef.current = true;
+    const nowIso = new Date().toISOString();
+    const activeLeader = newItemData.updatedBy || newItemData.leaderNik || leaderNik || '';
     const newItem: WipItem = {
       ...newItemData,
       id: `wip-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedBy: activeLeader,
+      leaderNik: activeLeader,
+      leaderName: activeLeader,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
     setWipItems((prev) => [newItem, ...prev]);
+
+    // Also update line state
+    if (newItemData.lineId) {
+      setLines((prev) =>
+        prev.map((l) =>
+          l.id.toUpperCase() === newItemData.lineId.toUpperCase()
+            ? {
+                ...l,
+                currentLeaderNik: activeLeader || l.currentLeaderNik,
+                lastUpdatedBy: activeLeader,
+                status: 'in_progress',
+                lastUpdated: new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              }
+            : l
+        )
+      );
+    }
   };
 
   const handleAddNewSpoOption = (newSpo: SpoOption) => {
@@ -365,6 +427,16 @@ export default function App() {
 
   const handleUpdateWipItem = (updatedItem: WipItem) => {
     userHasMutatedWipRef.current = true;
+    const activeLeader = updatedItem.updatedBy || updatedItem.leaderNik || leaderNik || '';
+    const nowIso = new Date().toISOString();
+    const itemWithMeta: WipItem = {
+      ...updatedItem,
+      updatedBy: activeLeader,
+      leaderNik: activeLeader,
+      leaderName: activeLeader,
+      updatedAt: nowIso,
+    };
+
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
@@ -372,26 +444,45 @@ export default function App() {
       const getItemDate = (i: WipItem) =>
         i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
 
-      const targetDate = getItemDate(updatedItem);
+      const targetDate = getItemDate(itemWithMeta);
 
       // Check if item exists by id or by (lineId + spo + size + date)
       const existingIndex = prev.findIndex(
         (item) =>
-          item.id === updatedItem.id ||
-          (cleanLine(item.lineId) === cleanLine(updatedItem.lineId) &&
-            cleanSpo(item.spo) === cleanSpo(updatedItem.spo) &&
-            cleanSize(item.size) === cleanSize(updatedItem.size) &&
+          item.id === itemWithMeta.id ||
+          (cleanLine(item.lineId) === cleanLine(itemWithMeta.lineId) &&
+            cleanSpo(item.spo) === cleanSpo(itemWithMeta.spo) &&
+            cleanSize(item.size) === cleanSize(itemWithMeta.size) &&
             getItemDate(item) === targetDate)
       );
 
       if (existingIndex >= 0) {
         const next = [...prev];
-        next[existingIndex] = updatedItem;
+        next[existingIndex] = itemWithMeta;
         return next;
       } else {
-        return [updatedItem, ...prev];
+        return [itemWithMeta, ...prev];
       }
     });
+
+    if (updatedItem.lineId && activeLeader) {
+      setLines((prev) =>
+        prev.map((l) =>
+          l.id.toUpperCase() === updatedItem.lineId.toUpperCase()
+            ? {
+                ...l,
+                currentLeaderNik: activeLeader,
+                lastUpdatedBy: activeLeader,
+                status: 'in_progress',
+                lastUpdated: new Date().toLocaleTimeString('id-ID', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              }
+            : l
+        )
+      );
+    }
   };
 
   const handleImportWipItems = (importedItems: WipItem[], replaceMode: boolean = false) => {
@@ -575,7 +666,7 @@ export default function App() {
             {/* Render selected Tab content */}
             {dashboardTab === 'lines_wip' && (
               <>
-                <LineGrid lines={lines} onSelectLine={handleSelectLineClick} />
+                <LineGrid lines={lines} wipItems={wipItems} onSelectLine={handleSelectLineClick} />
                 <div className="mt-8 border-t border-slate-200 pt-6">
                   <WipTable
                     items={wipItems}

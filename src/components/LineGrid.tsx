@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ProductionLine, BuildingId } from '../types';
-import { Building2, Search, UserCheck } from 'lucide-react';
+import { ProductionLine, BuildingId, WipItem } from '../types';
+import { Building2, Search, UserCheck, Clock } from 'lucide-react';
 
 interface LineGridProps {
   lines: ProductionLine[];
+  wipItems?: WipItem[];
   onSelectLine: (lineId: string) => void;
 }
 
@@ -19,7 +20,7 @@ const BUILDINGS_CONFIG: {
   { id: 'D', name: 'BUILDING D', color: 'text-teal-600', badgeClass: 'bg-teal-50 text-teal-700 border-teal-100' },
 ];
 
-export const LineGrid: React.FC<LineGridProps> = ({ lines, onSelectLine }) => {
+export const LineGrid: React.FC<LineGridProps> = ({ lines, wipItems = [], onSelectLine }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBuildingFilter, setSelectedBuildingFilter] = useState<'ALL' | BuildingId>('ALL');
 
@@ -103,13 +104,37 @@ export const LineGrid: React.FC<LineGridProps> = ({ lines, onSelectLine }) => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {bLines.map((line) => {
-                  const isActive = line.status === 'in_progress' || line.id === 'A01';
+                  const lineWips = wipItems.filter(
+                    (w) => w.lineId?.trim().toUpperCase() === line.id.trim().toUpperCase()
+                  );
+                  const contributors = Array.from(
+                    new Set(
+                      lineWips
+                        .map((w) => w.updatedBy || w.leaderNik || '')
+                        .filter((n) => Boolean(n && n.trim()))
+                    )
+                  );
+                  const latestWip = [...lineWips].sort(
+                    (a, b) =>
+                      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+                      new Date(a.updatedAt || a.createdAt || 0).getTime()
+                  )[0];
+
+                  const effectiveLeader =
+                    latestWip?.updatedBy ||
+                    latestWip?.leaderNik ||
+                    line.currentLeaderNik ||
+                    (contributors.length > 0 ? contributors[contributors.length - 1] : undefined);
+
+                  const hasData = lineWips.length > 0;
+                  const isActive = line.status === 'in_progress' || hasData || line.id === 'A01';
+
                   return (
                     <button
                       key={line.id}
                       onClick={() => onSelectLine(line.id)}
                       id={`line-card-${line.id}`}
-                      className={`group relative flex flex-col items-center justify-center p-5 rounded-2xl border text-center transition-all duration-200 cursor-pointer card-shadow ${
+                      className={`group relative flex flex-col items-center justify-center p-4 rounded-2xl border text-center transition-all duration-200 cursor-pointer card-shadow ${
                         isActive
                           ? 'bg-gradient-to-b from-blue-50/50 to-white border-blue-500 shadow-lg shadow-blue-500/10 hover:border-blue-600'
                           : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-blue-300'
@@ -117,7 +142,7 @@ export const LineGrid: React.FC<LineGridProps> = ({ lines, onSelectLine }) => {
                     >
                       {/* Highlighted active ring/accent */}
                       {isActive && (
-                        <span className="absolute top-3 right-3 flex h-2.5 w-2.5">
+                        <span className="absolute top-2.5 right-2.5 flex h-2.5 w-2.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                         </span>
@@ -133,16 +158,21 @@ export const LineGrid: React.FC<LineGridProps> = ({ lines, onSelectLine }) => {
                         {line.id}
                       </span>
 
-                      <span className="text-[11px] font-medium mt-1 text-slate-400 group-hover:text-slate-600 transition-colors">
-                        Klik untuk Input
+                      <span className="text-[11px] font-medium mt-0.5 text-slate-400 group-hover:text-slate-600 transition-colors">
+                        {hasData ? `${lineWips.length} baris WIP` : 'Klik untuk Input'}
                       </span>
 
-                      {line.currentLeaderNik && (
-                        <span className="mt-2.5 inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200 font-medium">
-                          <UserCheck className="w-3 h-3 text-emerald-600" />
-                          NIK: {line.currentLeaderNik}
-                        </span>
-                      )}
+                      {effectiveLeader ? (
+                        <div className="mt-2 w-full">
+                          <span
+                            className="inline-flex items-center justify-center gap-1 text-[10px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 font-semibold truncate max-w-full"
+                            title={`Leader: ${effectiveLeader}${contributors.length > 1 ? ` (Pengisi: ${contributors.join(', ')})` : ''}`}
+                          >
+                            <UserCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span className="truncate">{effectiveLeader}</span>
+                          </span>
+                        </div>
+                      ) : null}
                     </button>
                   );
                 })}

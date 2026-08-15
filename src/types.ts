@@ -7,6 +7,7 @@ export interface ProductionLine {
   status: 'active' | 'idle' | 'in_progress';
   currentLeaderNik?: string;
   lastUpdated?: string;
+  lastUpdatedBy?: string;
 }
 
 export interface LineManpower {
@@ -45,6 +46,9 @@ export interface WipItem {
   normalMp?: number;    // MP Jam Kerja Normal
   overtimeHours?: number; // Jam Kerja Lembur (max 4)
   overtimeMp?: number;  // MP Jam Kerja Lembur
+  leaderNik?: string;
+  leaderName?: string;
+  updatedBy?: string;
   date?: string;
   createdAt: string;
   updatedAt: string;

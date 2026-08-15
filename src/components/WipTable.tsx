@@ -771,13 +771,14 @@ export const WipTable: React.FC<WipTableProps> = ({
               <th className="p-2.5 border-r border-slate-200 text-center text-indigo-700 bg-indigo-50/30" title="Scan Distribusi (CHK10 Scan)">CHK10 SCAN</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-amber-700 bg-amber-50/30">WIP FINISHING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-blue-700 bg-blue-50/30">OUT PACKING</th>
+              <th className="p-2.5 border-r border-slate-200 text-center text-slate-700 bg-slate-50/50 min-w-[90px]">PENGISI</th>
               <th className="p-2.5 text-center">AKSI</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200/80 font-mono text-slate-700">
             {Object.keys(spoGroups).length === 0 ? (
               <tr>
-                <td colSpan={22} className="p-8 text-center text-slate-400 text-xs font-sans">
+                <td colSpan={23} className="p-8 text-center text-slate-400 text-xs font-sans">
                   Tidak ada data WIP untuk ditampilkan.
                 </td>
               </tr>
@@ -880,6 +881,18 @@ export const WipTable: React.FC<WipTableProps> = ({
                           <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-semibold bg-indigo-50/20">{getScanDistribusiValue(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-amber-700 font-semibold">{getItemWipFinish(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-blue-700">{item.outPacking || '-'}</td>
+                          <td className="p-2.5 border-r border-slate-200 text-center">
+                            {item.updatedBy || item.leaderNik ? (
+                              <span
+                                className="inline-block text-[10px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 font-semibold truncate max-w-[100px]"
+                                title={`Diisi / diupdate oleh: ${item.updatedBy || item.leaderNik}`}
+                              >
+                                {item.updatedBy || item.leaderNik}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </td>
                           <td className="p-2.5 text-center">
                             <div className="flex items-center justify-center space-x-1.5">
                               <button
@@ -937,6 +950,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-bold">{totalScanDist}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWipFinish}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalOutPacking}</td>
+                      <td className="p-2.5 border-r border-slate-200"></td>
                       <td className="p-2.5"></td>
                     </tr>
                   </React.Fragment>
