@@ -8,9 +8,12 @@ import {
   pushWebAppWipData,
   fetchWebAppWipData,
   fetchLiveWipSheetCsv,
-  getEffectiveWebAppUrl
+  getEffectiveWebAppUrl,
+  mergeDuplicateWipItems,
+  clearSpreadsheetWipData,
 } from './lib/googleSheetsService';
 import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
+import { normalizeDateStr, getTodayDateStr } from './utils/date';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
 import { LoginLeaderModal } from './components/LoginLeaderModal';
@@ -32,7 +35,7 @@ export default function App() {
 
   // Single Master Report Date State for the entire App
   const [globalReportDate, setGlobalReportDate] = useState<string>(
-    () => new Date().toISOString().split('T')[0]
+    () => getTodayDateStr()
   );
 
   // Modal States
@@ -73,11 +76,11 @@ export default function App() {
 
   const [wipItems, setWipItems] = useState<WipItem[]>(() => {
     const saved = safeGetItem('wip_sewing_items');
-    if (!saved) return INITIAL_WIP_ITEMS;
+    if (!saved) return [];
     try {
       return JSON.parse(saved);
     } catch {
-      return INITIAL_WIP_ITEMS;
+      return [];
     }
   });
 
@@ -125,14 +128,16 @@ export default function App() {
     try {
       if (webAppUrl) {
         const remoteWip = await fetchWebAppWipData(webAppUrl);
-        if (remoteWip && remoteWip.length > 0) {
-          handleImportWipItems(remoteWip);
+        if (remoteWip && Array.isArray(remoteWip) && remoteWip.length > 0) {
+          handleImportWipItems(remoteWip, false);
+          safeSetItem('google_sheets_imported', 'true');
           return;
         }
       }
       const csvWip = await fetchLiveWipSheetCsv();
       if (csvWip && csvWip.length > 0) {
-        handleImportWipItems(csvWip);
+        handleImportWipItems(csvWip, false);
+        safeSetItem('google_sheets_imported', 'true');
       }
     } catch (err) {
       console.warn('Background WIP sheet initial sync notice:', err);
@@ -239,8 +244,9 @@ export default function App() {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
         if (fetchedWip && fetchedWip.length > 0) {
           setWipItems((current) => {
-            if (current.length !== fetchedWip.length || JSON.stringify(current) !== JSON.stringify(fetchedWip)) {
-              return fetchedWip;
+            const merged = mergeDuplicateWipItems([...current, ...fetchedWip]);
+            if (JSON.stringify(merged) !== JSON.stringify(current)) {
+              return merged;
             }
             return current;
           });
@@ -274,8 +280,6 @@ export default function App() {
             });
             return changed ? updated : prevLines;
           });
-        } else if (fetchedWip && fetchedWip.length === 0 && safeGetItem('google_sheets_imported') === 'true') {
-          setWipItems([]);
         }
       } catch (err) {
         // Ignore background polling network glitches
@@ -324,41 +328,8 @@ export default function App() {
     setCurrentView('dashboard');
   };
 
-  const handleSaveWipItem = (newItemData: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => {
-    userHasMutatedWipRef.current = true;
-    const nowIso = new Date().toISOString();
-    const activeLeader = newItemData.updatedBy || newItemData.leaderNik || leaderNik || '';
-    const newItem: WipItem = {
-      ...newItemData,
-      id: `wip-${Date.now()}`,
-      updatedBy: activeLeader,
-      leaderNik: activeLeader,
-      leaderName: activeLeader,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    };
-
-    setWipItems((prev) => [newItem, ...prev]);
-
-    // Also update line state
-    if (newItemData.lineId) {
-      setLines((prev) =>
-        prev.map((l) =>
-          l.id.toUpperCase() === newItemData.lineId.toUpperCase()
-            ? {
-                ...l,
-                currentLeaderNik: activeLeader || l.currentLeaderNik,
-                lastUpdatedBy: activeLeader,
-                status: 'in_progress',
-                lastUpdated: new Date().toLocaleTimeString('id-ID', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
-              }
-            : l
-        )
-      );
-    }
+  const handleSaveWipItem = (newItemData: Omit<WipItem, 'createdAt' | 'updatedAt'> & { id?: string }) => {
+    handleUpdateWipItem(newItemData as WipItem);
   };
 
   const handleAddNewSpoOption = (newSpo: SpoOption) => {
@@ -375,7 +346,7 @@ export default function App() {
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
       const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
       const getItemDate = (i: WipItem) =>
-        i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
+        normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
       if (targetItem) {
         const targetLine = cleanLine(targetItem.lineId);
@@ -429,32 +400,38 @@ export default function App() {
     userHasMutatedWipRef.current = true;
     const activeLeader = updatedItem.updatedBy || updatedItem.leaderNik || leaderNik || '';
     const nowIso = new Date().toISOString();
-    const itemWithMeta: WipItem = {
-      ...updatedItem,
-      updatedBy: activeLeader,
-      leaderNik: activeLeader,
-      leaderName: activeLeader,
-      updatedAt: nowIso,
-    };
 
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
       const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
       const getItemDate = (i: WipItem) =>
-        i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
+        normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
-      const targetDate = getItemDate(itemWithMeta);
+      const targetDate = normalizeDateStr(updatedItem.date) || getItemDate(updatedItem) || getTodayDateStr();
 
-      // Check if item exists by id or by (lineId + spo + size + date)
+      // Check if item exists by id or by (lineId + spo + size)
       const existingIndex = prev.findIndex(
         (item) =>
-          item.id === itemWithMeta.id ||
-          (cleanLine(item.lineId) === cleanLine(itemWithMeta.lineId) &&
-            cleanSpo(item.spo) === cleanSpo(itemWithMeta.spo) &&
-            cleanSize(item.size) === cleanSize(itemWithMeta.size) &&
-            getItemDate(item) === targetDate)
+          (updatedItem.id && item.id === updatedItem.id) ||
+          (cleanLine(item.lineId) === cleanLine(updatedItem.lineId) &&
+            cleanSpo(item.spo) === cleanSpo(updatedItem.spo) &&
+            cleanSize(item.size) === cleanSize(updatedItem.size) &&
+            (getItemDate(item) === targetDate || !getItemDate(item) || !targetDate))
       );
+
+      const existingId = existingIndex >= 0 ? prev[existingIndex].id : undefined;
+      const finalId = updatedItem.id || existingId || `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${Date.now()}`;
+
+      const itemWithMeta: WipItem = {
+        ...updatedItem,
+        date: targetDate,
+        id: finalId,
+        updatedBy: activeLeader,
+        leaderNik: activeLeader,
+        leaderName: activeLeader,
+        updatedAt: nowIso,
+      };
 
       if (existingIndex >= 0) {
         const next = [...prev];
@@ -487,50 +464,10 @@ export default function App() {
 
   const handleImportWipItems = (importedItems: WipItem[], replaceMode: boolean = false) => {
     if (replaceMode) {
-      setWipItems(importedItems);
+      setWipItems(mergeDuplicateWipItems(importedItems));
       return;
     }
-    setWipItems((prev) => {
-      const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
-      const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
-      const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
-      const getItemDate = (i: WipItem) =>
-        i.date || (i.createdAt ? i.createdAt.split('T')[0] : '');
-
-      const next = [...prev];
-      importedItems.forEach((newItem, importIdx) => {
-        const targetDate = getItemDate(newItem);
-        const idx = next.findIndex(
-          (item) =>
-            (item.id && newItem.id && item.id === newItem.id) ||
-            (cleanLine(item.lineId) === cleanLine(newItem.lineId) &&
-              cleanSpo(item.spo) === cleanSpo(newItem.spo) &&
-              cleanSize(item.size) === cleanSize(newItem.size) &&
-              getItemDate(item) === targetDate)
-        );
-        if (idx >= 0) {
-          next[idx] = { ...next[idx], ...newItem, id: next[idx].id || newItem.id };
-        } else {
-          const isIdUnique = newItem.id && !next.some((x) => x.id === newItem.id);
-          const safeId = isIdUnique
-            ? newItem.id
-            : `wip-imp-${newItem.lineId}-${newItem.spo}-${newItem.size}-${importIdx}-${Date.now()}`;
-          next.unshift({ ...newItem, id: safeId });
-        }
-      });
-
-      // Deduplicate next array by ID
-      const seenIds = new Set<string>();
-      return next.map((item, idx) => {
-        if (!item.id || seenIds.has(item.id)) {
-          const uniqueId = `wip-dedup-${item.lineId}-${item.spo}-${item.size}-${idx}`;
-          seenIds.add(uniqueId);
-          return { ...item, id: uniqueId };
-        }
-        seenIds.add(item.id);
-        return item;
-      });
-    });
+    setWipItems((prev) => mergeDuplicateWipItems([...prev, ...importedItems]));
   };
 
   const handleAddChkItem = (newItemData: Omit<ChkItem, 'id' | 'createdAt'>) => {
@@ -562,6 +499,24 @@ export default function App() {
           : item
       )
     );
+  };
+
+  const handleClearAllWip = async () => {
+    userHasMutatedWipRef.current = true;
+    setWipItems([]);
+    safeSetItem('wip_sewing_items', '[]');
+    const webAppUrl = getEffectiveWebAppUrl();
+    if (webAppUrl) {
+      setSyncStatus('syncing');
+      try {
+        await clearSpreadsheetWipData(webAppUrl);
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } catch (e) {
+        console.warn('Failed to clear remote spreadsheet:', e);
+        setSyncStatus('error');
+      }
+    }
   };
 
   const handleResetData = () => {
@@ -774,6 +729,7 @@ export default function App() {
         spoOptions={spoOptions}
         lines={lines}
         onImportWipItems={handleImportWipItems}
+        onClearAllWip={handleClearAllWip}
       />
 
       {/* Footer */}

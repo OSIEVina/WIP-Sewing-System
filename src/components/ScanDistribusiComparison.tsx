@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { WipItem, ScanDistribusiItem } from '../types';
+import { normalizeDateStr } from '../utils/date';
 import {
   ArrowRightLeft,
   Search,
@@ -48,9 +49,7 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
 
   const getWipDate = (item: WipItem) => {
-    if (item.date) return item.date.trim();
-    if (item.createdAt) return item.createdAt.split('T')[0].trim();
-    return '';
+    return normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : ''));
   };
 
   // Extract all available dates
@@ -61,7 +60,8 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
       if (d) set.add(d);
     });
     scanItems.forEach((s) => {
-      if (s.date) set.add(s.date);
+      const d = normalizeDateStr(s.date);
+      if (d) set.add(d);
     });
     return Array.from(set).sort().reverse();
   }, [wipItems, scanItems]);

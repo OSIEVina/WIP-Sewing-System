@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { WipItem, ChkItem } from '../types';
 import { getLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { normalizeDateStr, getTodayDateStr } from '../utils/date';
 import { X, FileText, Download, Calendar, Users, CheckCircle2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -20,7 +21,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   items,
   chkItems = [],
 }) => {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateStr();
   const [targetDate, setTargetDate] = useState<string>(availableDates[0] || todayStr);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -28,9 +29,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   if (!isOpen) return null;
 
   // Filter items for targetDate
+  const normTargetDate = normalizeDateStr(targetDate);
   const dateItems = items.filter((i) => {
-    const d = i.date || (i.createdAt ? i.createdAt.split('T')[0] : todayStr);
-    return d === targetDate;
+    const d = normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : todayStr));
+    return d === normTargetDate;
   });
 
   // Group by Line ID

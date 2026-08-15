@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SpoOption, WipItem } from '../types';
 import { getLineManpower, saveLineManpower } from '../utils/manpower';
+import { normalizeDateStr, getTodayDateStr } from '../utils/date';
 import {
   ArrowLeft,
   Save,
@@ -26,7 +27,7 @@ interface LineWipDetailProps {
   globalReportDate?: string;
   setGlobalReportDate?: (d: string) => void;
   onBackToDashboard: () => void;
-  onSaveWip: (newItem: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSaveWip: (newItem: Omit<WipItem, 'createdAt' | 'updatedAt'> & { id?: string }) => void;
   onAddNewSpoOption: (spo: SpoOption) => void;
   onRefreshSpoSheet?: () => void;
   isRefreshingSpoSheet?: boolean;
@@ -59,12 +60,12 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
   // Single Top Master Date State for Line Input
   const [entryDate, setEntryDate] = useState<string>(
-    () => globalReportDate || new Date().toISOString().split('T')[0]
+    () => normalizeDateStr(globalReportDate) || getTodayDateStr()
   );
 
   useEffect(() => {
     if (globalReportDate) {
-      setEntryDate(globalReportDate);
+      setEntryDate(normalizeDateStr(globalReportDate));
     }
   }, [globalReportDate]);
 
@@ -156,14 +157,24 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
     });
   };
 
-  // Auto load existing entry when entryDate, selectedSpo, size, or lineId changes
+  // Helper to extract date string YYYY-MM-DD
+  const getItemDateStr = (i: WipItem) =>
+    normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+  // Ref to track the currently loaded Line + SPO + Size + Date selection
+  const lastLoadedKeyRef = useRef<string>('');
+
+  // Auto load existing entry when user changes entryDate, selectedSpo, size, or lineId, or when wipItems changes
   useEffect(() => {
+    const normEntryDate = normalizeDateStr(entryDate);
+    const currentKey = `${cleanLine(lineId)}_${cleanSpo(selectedSpo)}_${cleanSize(size)}_${normEntryDate}`;
+
     const existing = (wipItems || []).find(
       (item) =>
         cleanLine(item.lineId) === cleanLine(lineId) &&
         cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
         cleanSize(item.size) === cleanSize(size) &&
-        item.date === entryDate
+        (getItemDateStr(item) === normEntryDate || !getItemDateStr(item) || !normEntryDate)
     );
 
     if (existing) {
@@ -177,7 +188,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       setOutSewing(existing.outSewing || 0);
       setChk10(existing.chk3d || 0);
       setOutPacking(existing.outPacking || 0);
-    } else {
+    } else if (lastLoadedKeyRef.current !== currentKey) {
       setScanIn(0);
       setWip0(0);
       setWip1(0);
@@ -189,7 +200,9 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       setChk10(0);
       setOutPacking(0);
     }
-  }, [entryDate, selectedSpo, size, lineId]);
+
+    lastLoadedKeyRef.current = currentKey;
+  }, [entryDate, selectedSpo, size, lineId, wipItems]);
 
   // Matching items for this SPO & Size on this Line
   const matchingItems = (wipItems || []).filter(
@@ -199,8 +212,10 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       cleanSize(item.size) === cleanSize(size)
   );
 
+  const normEntryDate = normalizeDateStr(entryDate);
+
   // Items from previous dates (before entryDate)
-  const previousDaysItems = matchingItems.filter((item) => item.date < entryDate);
+  const previousDaysItems = matchingItems.filter((item) => getItemDateStr(item) < normEntryDate);
   const pastScanInSum = previousDaysItems.reduce((sum, item) => sum + (item.inHariIni || 0), 0);
   const pastOutSewingSum = previousDaysItems.reduce((sum, item) => sum + (item.outSewing || 0), 0);
   const carryoverWipSewing = Math.max(0, pastScanInSum - pastOutSewingSum);
@@ -215,7 +230,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
   // Formula: WIP Finishing = (Akumulasi Output Sewing) - (Akumulasi Out Packing)
   // Items from other days (excluding current entryDate)
-  const otherDaysItems = matchingItems.filter((item) => item.date !== entryDate);
+  const otherDaysItems = matchingItems.filter((item) => getItemDateStr(item) !== normEntryDate);
   const cumulativeOutSewing =
     otherDaysItems.reduce((sum, item) => sum + (item.outSewing || 0), 0) + (outSewing || 0);
   const cumulativeOutPacking =
@@ -283,7 +298,17 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const saveDate = normalizeDateStr(entryDate) || getTodayDateStr();
+    const existing = (wipItems || []).find(
+      (item) =>
+        cleanLine(item.lineId) === cleanLine(lineId) &&
+        cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
+        cleanSize(item.size) === cleanSize(size) &&
+        (getItemDateStr(item) === saveDate || !getItemDateStr(item) || !saveDate)
+    );
+
     onSaveWip({
+      id: existing?.id,
       lineId,
       spo: selectedSpo,
       style,
@@ -310,7 +335,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       leaderNik,
       leaderName: leaderNik,
       updatedBy: leaderNik,
-      date: entryDate,
+      date: saveDate,
     });
 
     setShowSuccessToast(true);

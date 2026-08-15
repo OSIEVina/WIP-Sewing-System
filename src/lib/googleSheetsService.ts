@@ -1,5 +1,6 @@
 import { WipItem, ChkItem, SpoOption } from '../types';
 import { safeGetItem } from '../utils/storage';
+import { normalizeDateStr } from '../utils/date';
 
 export const DEFAULT_SPREADSHEET_ID = '1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E';
 export const DEFAULT_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/edit`;
@@ -20,24 +21,39 @@ export async function testWebAppConnectivity(webAppUrl: string): Promise<{ succe
   const cleanUrl = webAppUrl.trim();
   if (!cleanUrl) return { success: false, message: 'URL Web App masih kosong.' };
   
+  if (cleanUrl.includes('docs.google.com/spreadsheets')) {
+    return {
+      success: false,
+      message: 'URL yang dimasukkan adalah link Spreadsheet, bukan URL Web App. Buka Extensions > Apps Script > Deploy > New deployment > Web App.',
+    };
+  }
+
+  if (cleanUrl.endsWith('/dev')) {
+    return {
+      success: false,
+      message: 'URL Web App berakhiran /dev (mode pengujian). Harap deploy dan gunakan URL berakhiran /exec agar dapat diakses tanpa login.',
+    };
+  }
+
   try {
-    const res = await fetch(cleanUrl, { method: 'GET' });
+    const url = cleanUrl.includes('?') ? `${cleanUrl}&action=ping` : `${cleanUrl}?action=ping`;
+    const res = await fetch(url, { method: 'GET' });
     if (!res.ok) {
       return {
         success: false,
-        message: `HTTP ${res.status}: Pastikan Web App diset ke "Who has access: Anyone".`,
+        message: `HTTP ${res.status}: Pastikan Web App diset ke "Who has access: Anyone" (Siapa saja).`,
       };
     }
     const data = await res.json().catch(() => null);
     if (data && data.status === 'success') {
-      return { success: true, message: 'Koneksi Web App Berhasil! Terhubung ke Google Spreadsheet.' };
+      return { success: true, message: 'Koneksi Web App Berhasil! Terhubung ke Google Apps Script.' };
     }
-    return { success: true, message: 'Web App online dan merespons!' };
+    return { success: true, message: 'Web App online dan merespons dengan baik!' };
   } catch (err: any) {
     return {
       success: false,
       message:
-        'Tidak dapat membaca respons (CORS/Izin). Pastikan deployment Apps Script diset ke "Anyone" (Siapa saja).',
+        'Koneksi GET gagal (CORS/Izin ditolak). Pastikan di Apps Script: Deploy > Manage deployments > Edit > Who has access diatur ke "Anyone" (Siapa saja), lalu pilih "New version".',
     };
   }
 }
@@ -305,6 +321,44 @@ export async function fetchSpreadsheetWipData(accessToken: string, spreadsheetId
 }
 
 /**
+ * Clears all WIP data rows in Google Spreadsheet via Web App
+ */
+export async function clearSpreadsheetWipData(webAppUrl?: string): Promise<boolean> {
+  const url = webAppUrl || getEffectiveWebAppUrl();
+  if (!url) return false;
+
+  const jsonString = JSON.stringify({
+    action: 'clearWip',
+    clearWip: true,
+    timestamp: new Date().toISOString(),
+    wipItems: [],
+  });
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: jsonString,
+    });
+  } catch (err) {
+    const formData = new URLSearchParams();
+    formData.append('data', jsonString);
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+  }
+  return true;
+}
+
+/**
  * Pushes WIP data payload to Google Apps Script Web App
  */
 export async function pushWebAppWipData(
@@ -348,13 +402,39 @@ export async function pushWebAppWipData(
 /**
  * Reads WIP Sewing Data directly from Google Sheets public CSV export
  */
-export async function fetchLiveWipSheetCsv(): Promise<WipItem[]> {
-  const url =
-    'https://docs.google.com/spreadsheets/d/1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E/gviz/tq?tqx=out:csv&sheet=WIP%20Sewing%20Data';
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  const lines = text.split(/\r?\n/);
+export async function fetchLiveWipSheetCsv(customSpreadsheetId?: string): Promise<WipItem[]> {
+  const savedCustomId = safeGetItem('custom_google_spreadsheet_id');
+  const targetId = customSpreadsheetId || savedCustomId || DEFAULT_SPREADSHEET_ID;
+
+  const candidateUrls = [
+    `https://docs.google.com/spreadsheets/d/${targetId}/gviz/tq?tqx=out:csv&gid=52889481`,
+    `https://docs.google.com/spreadsheets/d/${targetId}/gviz/tq?tqx=out:csv&sheet=WIP%20Sewing%20Data`,
+    `https://docs.google.com/spreadsheets/d/${targetId}/gviz/tq?tqx=out:csv&gid=0`,
+    `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&gid=52889481`,
+    `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=WIP%20Sewing%20Data`,
+  ];
+
+  let csvText = '';
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const res = await fetch(candidateUrl);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim().length > 10 && !text.includes('<!DOCTYPE html>')) {
+          csvText = text;
+          break;
+        }
+      }
+    } catch (e) {
+      // Continue to next candidate
+    }
+  }
+
+  if (!csvText) {
+    throw new Error('Tidak dapat membaca data CSV dari Google Spreadsheet. Pastikan Spreadsheet dibagikan ke "Siapa saja yang memiliki link" (Anyone with the link can view).');
+  }
+
+  const lines = csvText.split(/\r?\n/);
   if (lines.length < 2) return [];
 
   const parseCsvLine = (lineStr: string): string[] => {
@@ -420,7 +500,7 @@ export async function fetchLiveWipSheetCsv(): Promise<WipItem[]> {
       normalMp: Number(clean(row[21])) || 0,
       overtimeHours: Number(clean(row[22])) || 0,
       overtimeMp: Number(clean(row[23])) || 0,
-      date: clean(row[24]),
+      date: normalizeDateStr(clean(row[24])) || (clean(row[25]) ? normalizeDateStr(clean(row[25])) : ''),
       createdAt: clean(row[25]) || new Date().toISOString(),
       updatedBy: clean(row[26]) || '',
       leaderNik: clean(row[26]) || '',
@@ -428,7 +508,89 @@ export async function fetchLiveWipSheetCsv(): Promise<WipItem[]> {
       updatedAt: clean(row[27]) || clean(row[25]) || new Date().toISOString(),
     });
   }
-  return items;
+  return mergeDuplicateWipItems(items);
+}
+
+/**
+ * Smart merge function to combine duplicate records (Line + SPO + Size + Date) and preserve non-zero inputs & latest edits
+ */
+export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
+  const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
+  const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+  const getItemDate = (i: WipItem) => normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+  const map = new Map<string, WipItem>();
+  items.forEach((rawItem) => {
+    const itemDate = getItemDate(rawItem);
+    const item: WipItem = {
+      ...rawItem,
+      date: itemDate,
+    };
+    const key = `${cleanLine(item.lineId)}_${cleanSpo(item.spo)}_${cleanSize(item.size)}_${itemDate}`;
+    if (!map.has(key)) {
+      map.set(key, item);
+    } else {
+      const existing = map.get(key)!;
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      const itemTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+
+      let base: WipItem, incoming: WipItem;
+      if (itemTime > existingTime) {
+        base = existing;
+        incoming = item; // incoming is newer
+      } else {
+        base = item;
+        incoming = existing; // existing is newer
+      }
+
+      // Check if incoming has any non-zero WIP / production activity
+      const incomingHasData =
+        (incoming.inHariIni || 0) > 0 ||
+        (incoming.outSewing || 0) > 0 ||
+        (incoming.wip0 || 0) > 0 ||
+        (incoming.wip1 || 0) > 0 ||
+        (incoming.wip2 || 0) > 0 ||
+        (incoming.wip3 || 0) > 0 ||
+        (incoming.wip4 || 0) > 0 ||
+        (incoming.wip5 || 0) > 0 ||
+        (incoming.outPacking || 0) > 0;
+
+      const baseHasData =
+        (base.inHariIni || 0) > 0 ||
+        (base.outSewing || 0) > 0 ||
+        (base.wip0 || 0) > 0 ||
+        (base.wip1 || 0) > 0 ||
+        (base.wip2 || 0) > 0 ||
+        (base.wip3 || 0) > 0 ||
+        (base.wip4 || 0) > 0 ||
+        (base.wip5 || 0) > 0 ||
+        (base.outPacking || 0) > 0;
+
+      let merged: WipItem;
+      if (incomingHasData || !baseHasData) {
+        merged = {
+          ...base,
+          ...incoming,
+          date: itemDate,
+          id: incoming.id && !incoming.id.startsWith('wip-imp-') ? incoming.id : (base.id || incoming.id),
+          qtyOrder: incoming.qtyOrder || base.qtyOrder || 0,
+        };
+      } else {
+        // base had real data while incoming was an empty placeholder
+        merged = {
+          ...incoming,
+          ...base,
+          date: itemDate,
+          id: base.id && !base.id.startsWith('wip-imp-') ? base.id : (incoming.id || base.id),
+          qtyOrder: base.qtyOrder || incoming.qtyOrder || 0,
+        };
+      }
+      map.set(key, merged);
+    }
+  });
+
+  return Array.from(map.values());
 }
 
 /**
@@ -440,16 +602,21 @@ export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> 
     const response = await fetch(url);
     if (response.ok) {
       const result = await response.json();
-      if (result && Array.isArray(result.wipItems)) {
+      if (result && Array.isArray(result.wipItems) && result.wipItems.length > 0) {
         const seenIds = new Set<string>();
-        return result.wipItems.map((item: WipItem, idx: number) => {
+        const mapped = result.wipItems.map((item: WipItem, idx: number) => {
           let itemId = item.id;
           if (!itemId || itemId.includes('/') || seenIds.has(itemId)) {
             itemId = `wip-${item.lineId || ''}-${item.spo || ''}-${item.size || ''}-${idx}`;
           }
           seenIds.add(itemId);
-          return { ...item, id: itemId };
+          return {
+            ...item,
+            id: itemId,
+            date: normalizeDateStr(item.date) || (item.createdAt ? normalizeDateStr(item.createdAt) : ''),
+          };
         });
+        return mergeDuplicateWipItems(mapped);
       }
     }
   } catch (err) {

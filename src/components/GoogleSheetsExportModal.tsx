@@ -17,7 +17,8 @@ import {
   Code,
   Download,
   ClipboardCopy,
-  Radio
+  Radio,
+  Trash2,
 } from 'lucide-react';
 import {
   requestGoogleAccessToken,
@@ -30,6 +31,7 @@ import {
   DEFAULT_WEBAPP_URL,
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_SPREADSHEET_URL,
+  clearSpreadsheetWipData,
 } from '../lib/googleSheetsService';
 import { safeGetItem, safeSetItem } from '../utils/storage';
 
@@ -41,6 +43,7 @@ interface GoogleSheetsExportModalProps {
   spoOptions: SpoOption[];
   lines: ProductionLine[];
   onImportWipItems?: (items: WipItem[], replaceMode?: boolean) => void;
+  onClearAllWip?: () => void;
 }
 
 export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = ({
@@ -51,8 +54,10 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
   spoOptions,
   lines,
   onImportWipItems,
+  onClearAllWip,
 }) => {
   const [exportMode, setExportMode] = useState<'webapp' | 'oauth' | 'manual'>('webapp');
+  const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
   
   // OAuth Mode State
   const [sheetTitle, setSheetTitle] = useState<string>(
@@ -301,6 +306,29 @@ export const GoogleSheetsExportModal: React.FC<GoogleSheetsExportModalProps> = (
     }
   };
 
+  const handleClearSpreadsheetData = async () => {
+    setIsLoading(true);
+    setError('');
+    setStatusMessage('Mengosongkan baris data di Google Spreadsheet...');
+
+    try {
+      const trimmedUrl = webAppUrl.trim();
+      if (trimmedUrl) {
+        await clearSpreadsheetWipData(trimmedUrl);
+      }
+      if (onClearAllWip) {
+        onClearAllWip();
+      }
+      setShowClearConfirm(false);
+      setStatusMessage('Data di Google Spreadsheet dan Aplikasi berhasil dikosongkan! Anda dapat mulai input dari awal.');
+    } catch (err: any) {
+      console.error('Clear Spreadsheet Error:', err);
+      setError(err.message || 'Gagal mengosongkan data Google Spreadsheet.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCopyUrl = () => {
     if (!createdSheetUrl) return;
     navigator.clipboard.writeText(createdSheetUrl);
@@ -323,6 +351,12 @@ function doGet(e) {
   try {
     var ss = getTargetSpreadsheet();
     var wsWip = ss.getSheetByName("WIP Sewing Data");
+    if (!wsWip) {
+      var sheets = ss.getSheets();
+      if (sheets && sheets.length > 0) {
+        wsWip = sheets[0];
+      }
+    }
     if (!wsWip) {
       return ContentService.createTextOutput(JSON.stringify({ status: "success", wipItems: [] }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -392,10 +426,15 @@ function doPost(e) {
     var data = JSON.parse(raw);
     var ss = getTargetSpreadsheet();
     
-    // 1. WIP Sewing Sheet - Smart Merge (Tidak menghapus data line lain)
+    // 1. WIP Sewing Sheet
     var wsWip = ss.getSheetByName("WIP Sewing Data");
     if (!wsWip) {
-      wsWip = ss.insertSheet("WIP Sewing Data");
+      var sheets = ss.getSheets();
+      if (sheets && sheets.length > 0) {
+        wsWip = sheets[0];
+      } else {
+        wsWip = ss.insertSheet("WIP Sewing Data");
+      }
     }
     
     var header = [
@@ -405,24 +444,33 @@ function doPost(e) {
       "Jam Normal", "MP Normal", "Jam Lembur", "MP Lembur", "Tanggal", "Created At",
       "Pengisi / Leader", "Updated At"
     ];
+
+    // Jika diperintahkan untuk kosongkan seluruh baris data WIP
+    if (data.action === "clearWip" || data.clearWip === true) {
+      wsWip.clear();
+      wsWip.appendRow(header);
+      wsWip.getRange(1, 1, 1, header.length).setFontWeight("bold").setBackground("#d9ead3");
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "WIP data cleared" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     if (data.wipItems && data.wipItems.length > 0) {
       var existingValues = wsWip.getDataRange().getValues();
       var rowMap = {};
       
-      // Index baris yang sudah ada sebelumnya
+      // Index baris berdasarkan Line + SPO + Size
       if (existingValues.length > 1) {
         for (var r = 1; r < existingValues.length; r++) {
           var row = existingValues[r];
           if (!row[0] && !row[2]) continue;
-          var key = String(row[1]).trim().toUpperCase() + "_" + String(row[2]).trim().toLowerCase() + "_" + String(row[5]).trim().toLowerCase() + "_" + String(row[24]).trim();
+          var key = String(row[1] || '').trim().toUpperCase() + "_" + String(row[2] || '').replace(/\\s+/g, '').toLowerCase() + "_" + String(row[5] || '').replace(/\\s+/g, '').toLowerCase();
           rowMap[key] = row;
         }
       }
       
-      // Merge data baru/update
+      // Merge/Update baris baru
       data.wipItems.forEach(function(item) {
-        var itemKey = String(item.lineId || '').trim().toUpperCase() + "_" + String(item.spo || '').trim().toLowerCase() + "_" + String(item.size || '').trim().toLowerCase() + "_" + String(item.date || '').trim();
+        var itemKey = String(item.lineId || '').trim().toUpperCase() + "_" + String(item.spo || '').replace(/\\s+/g, '').toLowerCase() + "_" + String(item.size || '').replace(/\\s+/g, '').toLowerCase();
         var rowData = [
           String(item.id || ('wip-' + new Date().getTime())),
           String(item.lineId || ''),
@@ -769,15 +817,69 @@ function doPost(e) {
                       </button>
                     </div>
 
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Buka spreadsheet &gt; menu <strong>Extensions &gt; Apps Script</strong> &gt; tempel kode di bawah &gt; klik <strong>Deploy &gt; Manage deployments &gt; Edit &gt; New version &gt; Who has access: Anyone &gt; Deploy</strong>.
-                    </p>
+                    <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1">
+                      <p className="font-bold text-amber-950">⚠️ PENTING: Cara Deploy agar Tidak Muncul Error GET / CORS:</p>
+                      <ol className="list-decimal list-inside space-y-0.5 text-amber-900 leading-relaxed">
+                        <li>Buka spreadsheet &gt; menu <strong>Extensions &gt; Apps Script</strong> &gt; tempel kode di bawah.</li>
+                        <li>Klik <strong>Deploy &gt; Manage deployments</strong> (atau New deployment &gt; Web app).</li>
+                        <li>Pastikan <strong>Execute as: Me</strong> dan <strong>Who has access: Anyone (Siapa saja)</strong>.</li>
+                        <li>Pilih <strong>Version: New version</strong> lalu klik <strong>Deploy</strong>.</li>
+                        <li>Salin Web App URL (harus berakhiran <code>/exec</code>, bukan <code>/dev</code>).</li>
+                      </ol>
+                    </div>
 
                     <pre className="p-2.5 bg-slate-900 text-emerald-400 rounded-lg text-[9.5px] font-mono overflow-x-auto max-h-36 leading-tight">
                       {sampleAppsScriptCode}
                     </pre>
                   </div>
                 )}
+
+                {/* Reset / Kosongkan Data Section */}
+                <div className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-red-900 font-bold">
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <span>Kosongkan Seluruh Data WIP & Mulai Dari Awal</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-red-700 leading-relaxed">
+                    Hapus semua baris data WIP di spreadsheet dan aplikasi agar Anda dapat memulai proses input baru dari awal yang bersih.
+                  </p>
+
+                  {!showClearConfirm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(true)}
+                      className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded-lg font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Kosongkan Data Sekarang</span>
+                    </button>
+                  ) : (
+                    <div className="p-2.5 bg-white border border-red-300 rounded-lg space-y-2 animate-fadeIn">
+                      <p className="font-bold text-red-900 text-xs">
+                        ⚠️ Yakin ingin mengosongkan semua data WIP? Tindakan ini tidak dapat dibatalkan.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleClearSpreadsheetData}
+                          disabled={isLoading}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition"
+                        >
+                          {isLoading ? 'Sedang Mengosongkan...' : 'Ya, Kosongkan Semua Data'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowClearConfirm(false)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs border border-slate-200 cursor-pointer transition"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { WipItem, ChkItem } from '../types';
 import { PasteChkModal } from './PasteChkModal';
 import { getLineManpower, getAllLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { normalizeDateStr } from '../utils/date';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -123,15 +124,11 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
   };
 
   const getWipDate = (item: WipItem) => {
-    if (item.date) return item.date.trim();
-    if (item.createdAt) return item.createdAt.split('T')[0].trim();
-    return '';
+    return normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : ''));
   };
 
   const getChkDate = (item: ChkItem) => {
-    if (item.date) return item.date.trim();
-    if (item.createdAt) return item.createdAt.split('T')[0].trim();
-    return '';
+    return normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : ''));
   };
 
   // Unique list of dates

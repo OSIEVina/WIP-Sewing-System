@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem, ScanDistribusiItem } from '../types';
 import { getLineManpower, getAllLineManpower, saveLineManpower, deleteLineManpower, checkManpowerDeviation } from '../utils/manpower';
+import { normalizeDateStr, getTodayDateStr } from '../utils/date';
 import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PdfExportModal } from './PdfExportModal';
@@ -32,23 +33,30 @@ export const WipTable: React.FC<WipTableProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tableFilter, setTableFilter] = useState('');
-  const [localDate, setLocalDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const globalReportDate = propGlobalDate !== undefined ? propGlobalDate : localDate;
-  const setGlobalReportDate = propSetGlobalDate || setLocalDate;
+  const [localDate, setLocalDate] = useState<string>(() => getTodayDateStr());
+  const globalReportDate = normalizeDateStr(propGlobalDate !== undefined ? propGlobalDate : localDate);
+  const setGlobalReportDate = (d: string) => {
+    const norm = normalizeDateStr(d);
+    if (propSetGlobalDate) {
+      propSetGlobalDate(norm);
+    } else {
+      setLocalDate(norm);
+    }
+  };
   const [editingManpower, setEditingManpower] = useState<{ lineId: string; date: string; normalHours: number; normalMp: number; overtimeHours: number; overtimeMp: number } | null>(null);
   const [editModalItem, setEditModalItem] = useState<WipItem | null>(null);
   const [manpowerTick, setManpowerTick] = useState<number>(0);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   const getItemDate = (item: WipItem) =>
-    item.date || (item.createdAt ? item.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
+    normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : '')) || getTodayDateStr();
 
   // Extract list of unique dates available in items, plus today and tomorrow
-  const rawDates = items.map(getItemDate);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const rawDates = items.map(getItemDate).filter(Boolean);
+  const todayStr = getTodayDateStr();
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-  const tomorrowStr = tomorrowObj.toISOString().split('T')[0];
+  const tomorrowStr = normalizeDateStr(tomorrowObj.toISOString()) || getTodayDateStr();
 
   const availableDates = Array.from(new Set([...rawDates, todayStr, tomorrowStr])).sort().reverse();
 
