@@ -596,13 +596,16 @@ export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
 /**
  * Reads WIP Sewing Data from Google Apps Script Web App with CSV fallback
  */
-export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> {
+export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[] | null> {
   try {
     const url = webAppUrl.includes('?') ? `${webAppUrl}&action=getWip` : `${webAppUrl}?action=getWip`;
     const response = await fetch(url);
     if (response.ok) {
       const result = await response.json();
-      if (result && Array.isArray(result.wipItems) && result.wipItems.length > 0) {
+      if (result && Array.isArray(result.wipItems)) {
+        if (result.wipItems.length === 0) {
+          return [];
+        }
         const seenIds = new Set<string>();
         const mapped = result.wipItems.map((item: WipItem, idx: number) => {
           let itemId = item.id;
@@ -620,15 +623,17 @@ export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> 
       }
     }
   } catch (err) {
-    console.warn('Apps Script GET failed, attempting CSV fallback:', err);
+    console.warn('Apps Script GET failed:', err);
+    return null;
   }
 
-  // Fallback: Read directly from Google Sheets public CSV export
+  // Fallback: Read directly from Google Sheets public CSV export if webAppUrl is not available
   try {
-    return await fetchLiveWipSheetCsv();
+    const csvResult = await fetchLiveWipSheetCsv();
+    return csvResult;
   } catch (err) {
-    console.warn('Direct CSV fetch failed:', err);
-    return [];
+    console.warn('Direct CSV fetch fallback notice:', err);
+    return null;
   }
 }
 

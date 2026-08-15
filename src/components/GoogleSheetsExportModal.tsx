@@ -454,67 +454,45 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
-    if (data.wipItems && data.wipItems.length > 0) {
-      var existingValues = wsWip.getDataRange().getValues();
-      var rowMap = {};
-      
-      // Index baris berdasarkan Line + SPO + Size
-      if (existingValues.length > 1) {
-        for (var r = 1; r < existingValues.length; r++) {
-          var row = existingValues[r];
-          if (!row[0] && !row[2]) continue;
-          var key = String(row[1] || '').trim().toUpperCase() + "_" + String(row[2] || '').replace(/\\s+/g, '').toLowerCase() + "_" + String(row[5] || '').replace(/\\s+/g, '').toLowerCase();
-          rowMap[key] = row;
-        }
+    if (data.wipItems && Array.isArray(data.wipItems)) {
+      wsWip.clear();
+      wsWip.appendRow(header);
+      if (data.wipItems.length > 0) {
+        var rows = data.wipItems.map(function(item) {
+          return [
+            String(item.id || ('wip-' + new Date().getTime())),
+            String(item.lineId || ''),
+            String(item.spo || ''),
+            String(item.style || ''),
+            String(item.color || ''),
+            String(item.size || ''),
+            Number(item.qtyOrder || 0),
+            String(item.unit || 'PCE'),
+            Number(item.inHariIni || 0),
+            Number(item.wip0 || 0),
+            Number(item.wip1 || 0),
+            Number(item.wip2 || 0),
+            Number(item.wip3 || 0),
+            Number(item.wip4 || 0),
+            Number(item.wip5 || 0),
+            Number(item.wipSewing || 0),
+            Number(item.outSewing || 0),
+            Number(item.chk3d || 0),
+            Number(item.wipFinish || 0),
+            Number(item.outPacking || 0),
+            Number(item.normalHours || 0),
+            Number(item.normalMp || 0),
+            Number(item.overtimeHours || 0),
+            Number(item.overtimeMp || 0),
+            String(item.date || ''),
+            String(item.createdAt || new Date().toISOString()),
+            String(item.updatedBy || item.leaderNik || ''),
+            String(item.updatedAt || item.createdAt || new Date().toISOString())
+          ];
+        });
+        wsWip.getRange(2, 1, rows.length, header.length).setValues(rows);
       }
-      
-      // Merge/Update baris baru
-      data.wipItems.forEach(function(item) {
-        var itemKey = String(item.lineId || '').trim().toUpperCase() + "_" + String(item.spo || '').replace(/\\s+/g, '').toLowerCase() + "_" + String(item.size || '').replace(/\\s+/g, '').toLowerCase();
-        var rowData = [
-          String(item.id || ('wip-' + new Date().getTime())),
-          String(item.lineId || ''),
-          String(item.spo || ''),
-          String(item.style || ''),
-          String(item.color || ''),
-          String(item.size || ''),
-          Number(item.qtyOrder || 0),
-          String(item.unit || 'PCE'),
-          Number(item.inHariIni || 0),
-          Number(item.wip0 || 0),
-          Number(item.wip1 || 0),
-          Number(item.wip2 || 0),
-          Number(item.wip3 || 0),
-          Number(item.wip4 || 0),
-          Number(item.wip5 || 0),
-          Number(item.wipSewing || 0),
-          Number(item.outSewing || 0),
-          Number(item.chk3d || 0),
-          Number(item.wipFinish || 0),
-          Number(item.outPacking || 0),
-          Number(item.normalHours || 0),
-          Number(item.normalMp || 0),
-          Number(item.overtimeHours || 0),
-          Number(item.overtimeMp || 0),
-          String(item.date || ''),
-          String(item.createdAt || new Date().toISOString()),
-          String(item.updatedBy || item.leaderNik || ''),
-          String(item.updatedAt || item.createdAt || new Date().toISOString())
-        ];
-        rowMap[itemKey] = rowData;
-      });
-
-      var uniqueRows = [];
-      for (var k in rowMap) {
-        uniqueRows.push(rowMap[k]);
-      }
-
-      if (uniqueRows.length > 0) {
-        wsWip.clear();
-        wsWip.appendRow(header);
-        wsWip.getRange(2, 1, uniqueRows.length, header.length).setValues(uniqueRows);
-        wsWip.getRange(1, 1, 1, header.length).setFontWeight("bold").setBackground("#d9ead3");
-      }
+      wsWip.getRange(1, 1, 1, header.length).setFontWeight("bold").setBackground("#d9ead3");
     }
 
     // 2. SPO Master Sheet

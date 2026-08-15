@@ -128,15 +128,17 @@ export default function App() {
     try {
       if (webAppUrl) {
         const remoteWip = await fetchWebAppWipData(webAppUrl);
-        if (remoteWip && Array.isArray(remoteWip) && remoteWip.length > 0) {
-          handleImportWipItems(remoteWip, false);
+        if (remoteWip !== null && Array.isArray(remoteWip)) {
+          setWipItems(remoteWip);
+          safeSetItem('wip_sewing_items', JSON.stringify(remoteWip));
           safeSetItem('google_sheets_imported', 'true');
           return;
         }
       }
       const csvWip = await fetchLiveWipSheetCsv();
-      if (csvWip && csvWip.length > 0) {
-        handleImportWipItems(csvWip, false);
+      if (csvWip !== null && Array.isArray(csvWip)) {
+        setWipItems(csvWip);
+        safeSetItem('wip_sewing_items', JSON.stringify(csvWip));
         safeSetItem('google_sheets_imported', 'true');
       }
     } catch (err) {
@@ -242,11 +244,12 @@ export default function App() {
       if (!webAppUrl) return;
       try {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
-        if (fetchedWip && fetchedWip.length > 0) {
+        if (fetchedWip !== null && Array.isArray(fetchedWip)) {
           setWipItems((current) => {
-            const merged = mergeDuplicateWipItems([...current, ...fetchedWip]);
-            if (JSON.stringify(merged) !== JSON.stringify(current)) {
-              return merged;
+            // When Google Sheets is the Single Source of Truth, fetchedWip replaces local state directly if changed
+            if (JSON.stringify(current) !== JSON.stringify(fetchedWip)) {
+              safeSetItem('wip_sewing_items', JSON.stringify(fetchedWip));
+              return fetchedWip;
             }
             return current;
           });
@@ -348,51 +351,67 @@ export default function App() {
       const getItemDate = (i: WipItem) =>
         normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
-      if (targetItem) {
-        const targetLine = cleanLine(targetItem.lineId);
-        const targetSpo = cleanSpo(targetItem.spo);
-        const targetSize = cleanSize(targetItem.size);
-        const targetDate = getItemDate(targetItem);
+      let targetLine = '';
+      let targetSpo = '';
+      let targetSize = '';
+      let targetDate = '';
 
-        // Filter out items that match id OR match (lineId + spo + size)
-        return prev.filter((item) => {
-          if (item.id === id || item.id === targetItem.id) return false;
-          if (
-            cleanLine(item.lineId) === targetLine &&
-            cleanSpo(item.spo) === targetSpo &&
-            cleanSize(item.size) === targetSize
-          ) {
-            if (!getItemDate(item) || getItemDate(item) === targetDate || id.startsWith('proj-')) {
+      if (targetItem) {
+        targetLine = cleanLine(targetItem.lineId);
+        targetSpo = cleanSpo(targetItem.spo);
+        targetSize = cleanSize(targetItem.size);
+        targetDate = getItemDate(targetItem) || normalizeDateStr(globalReportDate) || getTodayDateStr();
+      } else {
+        const found = prev.find((i) => i.id === id);
+        if (found) {
+          targetLine = cleanLine(found.lineId);
+          targetSpo = cleanSpo(found.spo);
+          targetSize = cleanSize(found.size);
+          targetDate = getItemDate(found) || normalizeDateStr(globalReportDate) || getTodayDateStr();
+        } else if (id.startsWith('proj-')) {
+          targetDate = normalizeDateStr(globalReportDate) || getTodayDateStr();
+        }
+      }
+
+      const nextWip = prev.filter((item) => {
+        // Direct ID match
+        if (item.id === id || (targetItem && item.id === targetItem.id)) {
+          const itemDate = getItemDate(item);
+          // If item date is strictly before targetDate, keep previous history intact!
+          if (targetDate && itemDate && itemDate < targetDate) {
+            return true;
+          }
+          return false;
+        }
+
+        const itemLine = cleanLine(item.lineId);
+        const itemSpo = cleanSpo(item.spo);
+        const itemSize = cleanSize(item.size);
+        const itemDate = getItemDate(item);
+
+        if (
+          targetLine &&
+          targetSpo &&
+          targetSize &&
+          itemLine === targetLine &&
+          itemSpo === targetSpo &&
+          itemSize === targetSize
+        ) {
+          // Rule: Data hari sebelumnya (< targetDate) TETAP ADA!
+          // Data hari ini (=== targetDate) dan selanjutnya (>= targetDate) dihapus!
+          if (targetDate && itemDate) {
+            if (itemDate >= targetDate) {
               return false;
             }
-          }
-          return true;
-        });
-      }
-
-      // Fallback: direct ID match or projected ID match
-      if (prev.some((item) => item.id === id)) {
-        return prev.filter((item) => item.id !== id);
-      }
-
-      return prev.filter((item) => {
-        if (id.startsWith('proj-')) {
-          const itemLine = cleanLine(item.lineId);
-          const itemSpo = cleanSpo(item.spo);
-          const itemSize = cleanSize(item.size);
-          if (
-            itemLine &&
-            itemSpo &&
-            itemSize &&
-            id.toUpperCase().includes(itemLine) &&
-            id.toLowerCase().includes(itemSpo) &&
-            id.toLowerCase().includes(itemSize)
-          ) {
-            return false;
+            return true;
           }
         }
+
         return true;
       });
+
+      safeSetItem('wip_sewing_items', JSON.stringify(nextWip));
+      return nextWip;
     });
   };
 
@@ -410,18 +429,22 @@ export default function App() {
 
       const targetDate = normalizeDateStr(updatedItem.date) || getItemDate(updatedItem) || getTodayDateStr();
 
-      // Check if item exists by id or by (lineId + spo + size)
+      // Check if item exists by id or STRICTLY by (lineId + spo + size + date)
+      // Must NOT match a different date to avoid overwriting previous days!
       const existingIndex = prev.findIndex(
         (item) =>
-          (updatedItem.id && item.id === updatedItem.id) ||
+          (updatedItem.id && item.id === updatedItem.id && getItemDate(item) === targetDate) ||
           (cleanLine(item.lineId) === cleanLine(updatedItem.lineId) &&
             cleanSpo(item.spo) === cleanSpo(updatedItem.spo) &&
             cleanSize(item.size) === cleanSize(updatedItem.size) &&
-            (getItemDate(item) === targetDate || !getItemDate(item) || !targetDate))
+            getItemDate(item) === targetDate)
       );
 
       const existingId = existingIndex >= 0 ? prev[existingIndex].id : undefined;
-      const finalId = updatedItem.id || existingId || `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${Date.now()}`;
+      const finalId =
+        (updatedItem.id && !updatedItem.id.startsWith('proj-') && existingIndex >= 0)
+          ? updatedItem.id
+          : existingId || `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${targetDate}-${Date.now()}`;
 
       const itemWithMeta: WipItem = {
         ...updatedItem,
@@ -433,13 +456,16 @@ export default function App() {
         updatedAt: nowIso,
       };
 
+      let next: WipItem[];
       if (existingIndex >= 0) {
-        const next = [...prev];
+        next = [...prev];
         next[existingIndex] = itemWithMeta;
-        return next;
       } else {
-        return [itemWithMeta, ...prev];
+        next = [itemWithMeta, ...prev];
       }
+
+      safeSetItem('wip_sewing_items', JSON.stringify(next));
+      return next;
     });
 
     if (updatedItem.lineId && activeLeader) {

@@ -51,14 +51,16 @@ export const WipTable: React.FC<WipTableProps> = ({
   const getItemDate = (item: WipItem) =>
     normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : '')) || getTodayDateStr();
 
-  // Extract list of unique dates available in items, plus today and tomorrow
+  // Extract list of unique dates available in items, plus today, tomorrow, and selected date
   const rawDates = items.map(getItemDate).filter(Boolean);
   const todayStr = getTodayDateStr();
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = normalizeDateStr(tomorrowObj.toISOString()) || getTodayDateStr();
 
-  const availableDates = Array.from(new Set([...rawDates, todayStr, tomorrowStr])).sort().reverse();
+  const availableDates = Array.from(
+    new Set([...rawDates, todayStr, tomorrowStr, globalReportDate].filter(Boolean))
+  ).sort().reverse();
 
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
@@ -149,38 +151,50 @@ export const WipTable: React.FC<WipTableProps> = ({
   };
 
   // Process items: if globalReportDate is set and certain SPOs don't have records on that date,
-  // carry over existing active SPOs into globalReportDate so the user can see and edit them directly!
+  // carry over existing active SPOs into globalReportDate if that date is on or after the SPO's first date
   const processedItems = React.useMemo(() => {
     if (!globalReportDate) {
       return items;
     }
 
-    const existingOnDate = items.filter((item) => getItemDate(item) === globalReportDate);
+    const normReportDate = normalizeDateStr(globalReportDate);
+    const existingOnDate = items.filter((item) => getItemDate(item) === normReportDate);
     const existingKeys = new Set(
       existingOnDate.map((i) => `${cleanLine(i.lineId)}|${cleanSpo(i.spo)}|${cleanSize(i.size)}`)
     );
 
-    const uniqueCombinationMap = new Map<string, WipItem>();
+    const uniqueCombinationMap = new Map<string, { templateItem: WipItem; earliestDate: string }>();
     items.forEach((item) => {
       const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanSize(item.size)}`;
+      const iDate = getItemDate(item);
       if (!uniqueCombinationMap.has(key)) {
-        uniqueCombinationMap.set(key, item);
+        uniqueCombinationMap.set(key, { templateItem: item, earliestDate: iDate });
+      } else {
+        const current = uniqueCombinationMap.get(key)!;
+        if (iDate && iDate < current.earliestDate) {
+          current.earliestDate = iDate;
+        }
       }
     });
 
     const resultList = [...existingOnDate];
 
-    uniqueCombinationMap.forEach((templateItem, key) => {
+    uniqueCombinationMap.forEach(({ templateItem, earliestDate }, key) => {
       if (!existingKeys.has(key)) {
+        // Do not project backwards if report date is before the earliest date this SPO was introduced
+        if (normReportDate < earliestDate) {
+          return;
+        }
+
         const { carryoverWipSewing, carryoverWipFinish } = getCarryoverValues(
           templateItem.lineId,
           templateItem.spo,
           templateItem.size,
-          globalReportDate
+          normReportDate
         );
 
         const projectedItem: WipItem = {
-          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.size}-${globalReportDate}`,
+          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.size}-${normReportDate}`,
           lineId: templateItem.lineId,
           spo: templateItem.spo,
           style: templateItem.style,
@@ -188,7 +202,7 @@ export const WipTable: React.FC<WipTableProps> = ({
           size: templateItem.size,
           qtyOrder: templateItem.qtyOrder,
           unit: templateItem.unit,
-          date: globalReportDate,
+          date: normReportDate,
           inHariIni: 0,
           wip0: 0,
           wip1: 0,
@@ -201,8 +215,8 @@ export const WipTable: React.FC<WipTableProps> = ({
           chk3d: 0,
           wipFinish: carryoverWipFinish,
           outPacking: 0,
-          createdAt: `${globalReportDate}T00:00:00.000Z`,
-          updatedAt: `${globalReportDate}T00:00:00.000Z`,
+          createdAt: `${normReportDate}T00:00:00.000Z`,
+          updatedAt: `${normReportDate}T00:00:00.000Z`,
         };
 
         resultList.push(projectedItem);

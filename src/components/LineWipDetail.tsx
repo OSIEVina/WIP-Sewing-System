@@ -174,7 +174,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
         cleanLine(item.lineId) === cleanLine(lineId) &&
         cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
         cleanSize(item.size) === cleanSize(size) &&
-        (getItemDateStr(item) === normEntryDate || !getItemDateStr(item) || !normEntryDate)
+        getItemDateStr(item) === normEntryDate
     );
 
     if (existing) {
@@ -304,7 +304,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
         cleanLine(item.lineId) === cleanLine(lineId) &&
         cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
         cleanSize(item.size) === cleanSize(size) &&
-        (getItemDateStr(item) === saveDate || !getItemDateStr(item) || !saveDate)
+        getItemDateStr(item) === saveDate
     );
 
     onSaveWip({
