@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ProductionLine, WipItem, SpoOption, ChkItem, ScanDistribusiItem } from './types';
 import { INITIAL_LINES, INITIAL_SPO_OPTIONS, INITIAL_WIP_ITEMS, INITIAL_CHK_ITEMS } from './data/initialData';
 import { fetchLiveSpoOptions } from './data/spoSheetService';
 import { fetchLiveChk10Items } from './data/chkSheetService';
 import { fetchLiveScanDistribusiItems } from './data/scanDistribusiSheetService';
-import { pushWebAppWipData, fetchWebAppWipData } from './lib/googleSheetsService';
+import {
+  pushWebAppWipData,
+  fetchWebAppWipData,
+  fetchLiveWipSheetCsv,
+  getEffectiveWebAppUrl
+} from './lib/googleSheetsService';
 import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
@@ -77,37 +82,7 @@ export default function App() {
   });
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
-
-  // Debounced Auto-Sync to Google Sheets Web App if enabled
-  useEffect(() => {
-    const isAutoSync = safeGetItem('google_sheets_autosync') === 'true';
-    const webAppUrl = safeGetItem('custom_google_webapp_url');
-    if (!isAutoSync || !webAppUrl) return;
-
-    setSyncStatus('syncing');
-    const timer = setTimeout(async () => {
-      try {
-        const payload = {
-          action: 'syncData',
-          timestamp: new Date().toISOString(),
-          wipItems,
-          spoOptions,
-        };
-        await fetch(webAppUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error('Auto-sync error:', err);
-        setSyncStatus('error');
-      }
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [wipItems, spoOptions]);
+  const userHasMutatedWipRef = useRef<boolean>(false);
 
   const [chkItems, setChkItems] = useState<ChkItem[]>(() => {
     const saved = safeGetItem('wip_sewing_chk_items');
@@ -142,7 +117,27 @@ export default function App() {
     loadSpoSheetData();
     loadChkSheetData();
     loadScanDistribusiData();
+    loadInitialWipData();
   }, []);
+
+  const loadInitialWipData = async () => {
+    const webAppUrl = getEffectiveWebAppUrl();
+    try {
+      if (webAppUrl) {
+        const remoteWip = await fetchWebAppWipData(webAppUrl);
+        if (remoteWip && remoteWip.length > 0) {
+          handleImportWipItems(remoteWip);
+          return;
+        }
+      }
+      const csvWip = await fetchLiveWipSheetCsv();
+      if (csvWip && csvWip.length > 0) {
+        handleImportWipItems(csvWip);
+      }
+    } catch (err) {
+      console.warn('Background WIP sheet initial sync notice:', err);
+    }
+  };
 
   const loadSpoSheetData = async () => {
     setIsRefreshingSpoSheet(true);
@@ -210,30 +205,40 @@ export default function App() {
     safeSetItem('wip_sewing_chk_items', JSON.stringify(chkItems));
   }, [chkItems]);
 
-  // Auto-sync background push to Google Sheets Web App whenever WIP / SPO / CHK updates
+  // Auto-sync background push to Google Sheets Web App whenever WIP is modified by user
   useEffect(() => {
-    const webAppUrl = safeGetItem('custom_google_webapp_url');
+    const webAppUrl = getEffectiveWebAppUrl();
     const autoSync = safeGetItem('google_sheets_autosync');
-    if (!webAppUrl || autoSync === 'false') return;
+    if (!webAppUrl || autoSync === 'false' || !userHasMutatedWipRef.current) return;
 
-    const timer = setTimeout(() => {
-      pushWebAppWipData(webAppUrl, { wipItems, spoOptions, chkItems }).catch((err) => {
+    setSyncStatus('syncing');
+    const timer = setTimeout(async () => {
+      try {
+        await pushWebAppWipData(webAppUrl, { wipItems, spoOptions, chkItems });
+        setSyncStatus('synced');
+        userHasMutatedWipRef.current = false;
+        setTimeout(() => {
+          setSyncStatus((curr) => (curr === 'synced' ? 'idle' : curr));
+        }, 3500);
+      } catch (err) {
         console.warn('Auto push Google Sheets background notice:', err);
-      });
-    }, 1200);
+        setSyncStatus('error');
+      }
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [wipItems, spoOptions, chkItems]);
+  }, [wipItems]);
 
-  // Background Auto-Poll from Google Sheets Web App every 10 seconds to merge inputs from other leaders
+  // Background Auto-Poll from Google Sheets Web App every 15 seconds to reflect additions, edits, & deletions from Google Spreadsheet
   useEffect(() => {
     const pollBackgroundData = async () => {
-      const webAppUrl = safeGetItem('custom_google_webapp_url');
+      if (userHasMutatedWipRef.current) return;
+      const webAppUrl = getEffectiveWebAppUrl();
       if (!webAppUrl) return;
       try {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
-        if (fetchedWip && fetchedWip.length > 0) {
-          handleImportWipItems(fetchedWip);
+        if (fetchedWip) {
+          setWipItems(fetchedWip);
         }
       } catch (err) {
         // Ignore background polling network glitches
@@ -241,7 +246,7 @@ export default function App() {
     };
 
     pollBackgroundData();
-    const interval = setInterval(pollBackgroundData, 10000);
+    const interval = setInterval(pollBackgroundData, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -283,6 +288,7 @@ export default function App() {
   };
 
   const handleSaveWipItem = (newItemData: Omit<WipItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    userHasMutatedWipRef.current = true;
     const newItem: WipItem = {
       ...newItemData,
       id: `wip-${Date.now()}`,
@@ -301,6 +307,7 @@ export default function App() {
   };
 
   const handleDeleteWipItem = (id: string, targetItem?: WipItem) => {
+    userHasMutatedWipRef.current = true;
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
@@ -357,6 +364,7 @@ export default function App() {
   };
 
   const handleUpdateWipItem = (updatedItem: WipItem) => {
+    userHasMutatedWipRef.current = true;
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
@@ -386,7 +394,11 @@ export default function App() {
     });
   };
 
-  const handleImportWipItems = (importedItems: WipItem[]) => {
+  const handleImportWipItems = (importedItems: WipItem[], replaceMode: boolean = false) => {
+    if (replaceMode) {
+      setWipItems(importedItems);
+      return;
+    }
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
@@ -450,6 +462,7 @@ export default function App() {
   };
 
   const handleSyncWipOutput = (spo: string, size: string, newOutSewing: number) => {
+    userHasMutatedWipRef.current = true;
     setWipItems((prev) =>
       prev.map((item) =>
         item.spo.trim().toLowerCase() === spo.trim().toLowerCase() &&

@@ -1,4 +1,46 @@
 import { WipItem, ChkItem, SpoOption } from '../types';
+import { safeGetItem } from '../utils/storage';
+
+export const DEFAULT_SPREADSHEET_ID = '1k2Oasyi6qV3OAwaFNn1KfJVZeDaJo2fstezaGWqd3_E';
+export const DEFAULT_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/edit`;
+
+export const DEFAULT_WEBAPP_URL =
+  'https://script.google.com/macros/s/AKfycbwtaNDAmVKQGCqajuylFICTzjfXQQksfDg-y8U5PxSuWjSXCe6J5HuFPemUIO9lwWN1sQ/exec';
+
+export function getEffectiveWebAppUrl(): string {
+  const saved = safeGetItem('custom_google_webapp_url');
+  if (saved && saved.trim()) return saved.trim();
+  return DEFAULT_WEBAPP_URL;
+}
+
+/**
+ * Tests Web App connectivity by sending a lightweight probe
+ */
+export async function testWebAppConnectivity(webAppUrl: string): Promise<{ success: boolean; message: string }> {
+  const cleanUrl = webAppUrl.trim();
+  if (!cleanUrl) return { success: false, message: 'URL Web App masih kosong.' };
+  
+  try {
+    const res = await fetch(cleanUrl, { method: 'GET' });
+    if (!res.ok) {
+      return {
+        success: false,
+        message: `HTTP ${res.status}: Pastikan Web App diset ke "Who has access: Anyone".`,
+      };
+    }
+    const data = await res.json().catch(() => null);
+    if (data && data.status === 'success') {
+      return { success: true, message: 'Koneksi Web App Berhasil! Terhubung ke Google Spreadsheet.' };
+    }
+    return { success: true, message: 'Web App online dan merespons!' };
+  } catch (err: any) {
+    return {
+      success: false,
+      message:
+        'Tidak dapat membaca respons (CORS/Izin). Pastikan deployment Apps Script diset ke "Anyone" (Siapa saja).',
+    };
+  }
+}
 
 declare global {
   interface Window {
@@ -263,20 +305,37 @@ export async function pushWebAppWipData(
   webAppUrl: string,
   payload: { wipItems: WipItem[]; spoOptions: SpoOption[]; chkItems?: ChkItem[] }
 ): Promise<boolean> {
-  await fetch(webAppUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-    body: JSON.stringify({
-      action: 'syncData',
-      timestamp: new Date().toISOString(),
-      wipItems: payload.wipItems,
-      spoOptions: payload.spoOptions,
-      chkItems: payload.chkItems || [],
-    }),
+  const jsonString = JSON.stringify({
+    action: 'syncData',
+    timestamp: new Date().toISOString(),
+    wipItems: payload.wipItems,
+    spoOptions: payload.spoOptions,
+    chkItems: payload.chkItems || [],
   });
+
+  try {
+    // Primary method: POST with text/plain (avoids CORS preflight in modern browsers)
+    await fetch(webAppUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: jsonString,
+    });
+  } catch (err) {
+    // Fallback: POST via URL-encoded form
+    const formData = new URLSearchParams();
+    formData.append('data', jsonString);
+    await fetch(webAppUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+  }
   return true;
 }
 
@@ -372,7 +431,7 @@ export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[]> 
     const response = await fetch(url);
     if (response.ok) {
       const result = await response.json();
-      if (result && Array.isArray(result.wipItems) && result.wipItems.length > 0) {
+      if (result && Array.isArray(result.wipItems)) {
         const seenIds = new Set<string>();
         return result.wipItems.map((item: WipItem, idx: number) => {
           let itemId = item.id;

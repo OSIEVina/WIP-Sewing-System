@@ -570,7 +570,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
           {showSuccessToast && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 animate-fadeIn font-semibold">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Data WIP & Manpower berhasil disimpan!</span>
+              <span>Data disimpan & sinkron ke Google Spreadsheet!</span>
             </div>
           )}
 
