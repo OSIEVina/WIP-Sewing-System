@@ -126,6 +126,22 @@ export const WipTable: React.FC<WipTableProps> = ({
     return Math.max(0, totalOutSewing - totalOutPacking);
   };
 
+  // Helper to calculate total WIP Sewing for a row (Sum of WIP 0..5 or recorded WIP Sewing)
+  const getItemWipSewing = (item: WipItem): number => {
+    const stationSum =
+      (item.wip0 || 0) +
+      (item.wip1 || 0) +
+      (item.wip2 || 0) +
+      (item.wip3 || 0) +
+      (item.wip4 || 0) +
+      (item.wip5 || 0);
+    if (stationSum > 0) return stationSum;
+    if (item.wipSewing !== undefined && item.wipSewing !== null && item.wipSewing > 0) {
+      return item.wipSewing;
+    }
+    return 0;
+  };
+
   // Helper to calculate carryover values for a specific SPO + Size combination up to a given date
   const getCarryoverValues = (lineId: string, spo: string, size: string, targetDate: string) => {
     const priorItems = items.filter(
@@ -303,6 +319,50 @@ export const WipTable: React.FC<WipTableProps> = ({
 
     return groups;
   }, [filteredItems]);
+
+  // Grand totals across all filtered items (all SPOs combined for this Line & Date)
+  const grandTotals = useMemo(() => {
+    const totalQty = filteredItems.reduce((s, i) => s + (i.qtyOrder || 0), 0);
+    const totalInHariIni = filteredItems.reduce((s, i) => s + (i.inHariIni || 0), 0);
+    const totalWip0 = filteredItems.reduce((s, i) => s + (i.wip0 || 0), 0);
+    const totalWip1 = filteredItems.reduce((s, i) => s + (i.wip1 || 0), 0);
+    const totalWip2 = filteredItems.reduce((s, i) => s + (i.wip2 || 0), 0);
+    const totalWip3 = filteredItems.reduce((s, i) => s + (i.wip3 || 0), 0);
+    const totalWip4 = filteredItems.reduce((s, i) => s + (i.wip4 || 0), 0);
+    const totalWip5 = filteredItems.reduce((s, i) => s + (i.wip5 || 0), 0);
+    const totalWipSewing = filteredItems.reduce((s, i) => s + getItemWipSewing(i), 0);
+    const totalOutSewing = filteredItems.reduce((s, i) => s + (i.outSewing || 0), 0);
+    const totalChk3d = filteredItems.reduce((s, i) => s + getChk10Value(i), 0);
+    const totalScanDist = filteredItems.reduce((s, i) => s + getScanDistribusiValue(i), 0);
+    const totalWipFinish = filteredItems.reduce((s, i) => s + getItemWipFinish(i), 0);
+    const totalOutPacking = filteredItems.reduce((s, i) => s + (i.outPacking || 0), 0);
+    const totalCheck = filteredItems.reduce((s, item) => {
+      const scanInVal = item.inHariIni || 0;
+      const rowWipSewing = getItemWipSewing(item);
+      const outSewingVal = item.outSewing || 0;
+      return s + (scanInVal - (rowWipSewing + outSewingVal));
+    }, 0);
+
+    return {
+      totalQty,
+      totalInHariIni,
+      totalWip0,
+      totalWip1,
+      totalWip2,
+      totalWip3,
+      totalWip4,
+      totalWip5,
+      totalWipSewing,
+      totalOutSewing,
+      totalChk3d,
+      totalScanDist,
+      totalWipFinish,
+      totalOutPacking,
+      totalCheck,
+      rowCount: filteredItems.length,
+      spoCount: sortedSpoKeys.length,
+    };
+  }, [filteredItems, sortedSpoKeys, chkItems, scanItems]);
 
   const handleStartEdit = (item: WipItem) => {
     setEditModalItem({
@@ -862,7 +922,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                 const totalWip3 = groupItems.reduce((s, i) => s + (i.wip3 || 0), 0);
                 const totalWip4 = groupItems.reduce((s, i) => s + (i.wip4 || 0), 0);
                 const totalWip5 = groupItems.reduce((s, i) => s + (i.wip5 || 0), 0);
-                const totalWipSewing = totalWip0 + totalWip1 + totalWip2 + totalWip3 + totalWip4 + totalWip5;
+                const totalWipSewing = groupItems.reduce((s, i) => s + getItemWipSewing(i), 0);
                 const totalOutSewing = groupItems.reduce((s, i) => s + (i.outSewing || 0), 0);
                 const totalChk3d = groupItems.reduce((s, i) => s + getChk10Value(i), 0);
                 const totalScanDist = groupItems.reduce((s, i) => s + getScanDistribusiValue(i), 0);
@@ -870,19 +930,18 @@ export const WipTable: React.FC<WipTableProps> = ({
                 const totalOutPacking = groupItems.reduce((s, i) => s + (i.outPacking || 0), 0);
                 const totalCheck = groupItems.reduce((s, item) => {
                   const scanInVal = item.inHariIni || 0;
-                  const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+                  const rowWipSewing = getItemWipSewing(item);
                   const outSewingVal = item.outSewing || 0;
-                  return s + (scanInVal - (wipStationSum + outSewingVal));
+                  return s + (scanInVal - (rowWipSewing + outSewingVal));
                 }, 0);
 
                 return (
                   <React.Fragment key={`spo-grp-${spoCode}-${groupIdx}`}>
                     {groupItems.map((item, itemIdx) => {
                       const scanInVal = item.inHariIni || 0;
-                      const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
-                      const wipSewingVal = wipStationSum > 0 ? wipStationSum : (item.wipSewing || 0);
+                      const rowWipSewing = getItemWipSewing(item);
                       const outSewingVal = item.outSewing || 0;
-                      const rowCheckValue = scanInVal - (wipSewingVal + outSewingVal);
+                      const rowCheckValue = scanInVal - (rowWipSewing + outSewingVal);
 
                       return (
                         <tr
@@ -920,7 +979,11 @@ export const WipTable: React.FC<WipTableProps> = ({
                           <td className="p-2.5 border-r border-slate-200 text-center">{item.wip4 || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center">{item.wip5 || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center font-bold bg-slate-50 text-slate-800">
-                            {item.wipSewing || '-'}
+                            {rowWipSewing > 0 ? (
+                              rowWipSewing
+                            ) : (
+                              <span className="text-slate-400 font-normal">0</span>
+                            )}
                           </td>
                           <td className="p-2.5 border-r border-slate-200 text-center font-bold text-emerald-700 bg-emerald-50/60">
                             {item.outSewing || '-'}
@@ -929,7 +992,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                             {rowCheckValue === 0 ? (
                               <span
                                 className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono"
-                                title={`Scan In (${scanInVal}) - [Jumlah (WIP0 s/d WIP5) (${wipSewingVal}) + Output Sewing (${outSewingVal})] = 0`}
+                                title={`Scan In (${scanInVal}) - [WIP Sewing (${rowWipSewing}) + Output Sewing (${outSewingVal})] = 0`}
                               >
                                 ✓ 0
                               </span>
@@ -940,7 +1003,7 @@ export const WipTable: React.FC<WipTableProps> = ({
                                     ? 'text-amber-700 bg-amber-50 border-amber-200'
                                     : 'text-red-700 bg-red-50 border-red-200'
                                 }`}
-                                title={`Scan In (${scanInVal}) - [Jumlah (WIP0 s/d WIP5) (${wipSewingVal}) + Output Sewing (${outSewingVal})] = ${rowCheckValue}`}
+                                title={`Scan In (${scanInVal}) - [WIP Sewing (${rowWipSewing}) + Output Sewing (${outSewingVal})] = ${rowCheckValue}`}
                               >
                                 {rowCheckValue > 0 ? `+${rowCheckValue}` : rowCheckValue}
                               </span>
@@ -1002,8 +1065,8 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip3}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip4}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip5}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center">{totalWipSewing}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center text-emerald-700">{totalOutSewing}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-black bg-slate-200/70 text-slate-900">{totalWipSewing}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-emerald-700 font-black">{totalOutSewing}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center font-black">
                         {totalCheck === 0 ? (
                           <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono">
@@ -1027,6 +1090,90 @@ export const WipTable: React.FC<WipTableProps> = ({
               })
             )}
           </tbody>
+
+          {/* GRAND TOTAL KESELURUHAN (Semua SPO digabung per Line & Tanggal) */}
+          {filteredItems.length > 0 && (
+            <tfoot className="border-t-2 border-slate-400 font-mono">
+              <tr className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white font-extrabold text-[11px] shadow-md">
+                <td colSpan={5} className="p-3 border-r border-slate-700 text-right tracking-wide">
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="bg-amber-400/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded text-[10px] font-sans">
+                      {grandTotals.spoCount} SPO &bull; {grandTotals.rowCount} Baris
+                    </span>
+                    <span className="uppercase text-amber-300 font-black">
+                      TOTAL KESELURUHAN {activeLineId ? `LINE ${activeLineId}` : ''} {globalReportDate ? `TANGGAL ${globalReportDate}` : ''}:
+                    </span>
+                  </div>
+                </td>
+                <td className="p-3 border-r border-slate-700 text-right text-emerald-300 font-black text-xs">
+                  {grandTotals.totalQty.toLocaleString()}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-slate-300 text-[10px]">PCE</td>
+                <td className="p-3 border-r border-slate-700 text-center text-blue-200 font-black bg-blue-900/40 text-xs">
+                  {grandTotals.totalInHariIni}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip0}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip1}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip2}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip3}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip4}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold bg-amber-950/30">
+                  {grandTotals.totalWip5}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-yellow-300 font-black bg-yellow-950/40 text-xs">
+                  {grandTotals.totalWipSewing}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-emerald-300 font-black bg-emerald-950/50 text-xs">
+                  {grandTotals.totalOutSewing}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center font-black">
+                  {grandTotals.totalCheck === 0 ? (
+                    <span className="text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/40 inline-block font-mono text-[10px]">
+                      ✓ 0 (Balans)
+                    </span>
+                  ) : (
+                    <span
+                      className={`px-2 py-0.5 rounded border inline-block font-mono text-[10px] ${
+                        grandTotals.totalCheck > 0
+                          ? 'text-amber-200 bg-amber-900/70 border-amber-500/50'
+                          : 'text-rose-200 bg-rose-900/70 border-rose-500/50'
+                      }`}
+                    >
+                      {grandTotals.totalCheck > 0 ? `+${grandTotals.totalCheck}` : grandTotals.totalCheck}
+                    </span>
+                  )}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-purple-200 font-bold bg-purple-950/30">
+                  {grandTotals.totalChk3d}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-cyan-200 font-black bg-cyan-950/40 text-xs">
+                  {grandTotals.totalScanDist}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-amber-200 font-bold">
+                  {grandTotals.totalWipFinish}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-blue-200 font-bold">
+                  {grandTotals.totalOutPacking}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center text-slate-400 text-[10px]">
+                  ALL
+                </td>
+                <td className="p-3 text-center text-slate-400 text-[10px]">
+                  -
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
