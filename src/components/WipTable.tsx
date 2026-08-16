@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem, ScanDistribusiItem } from '../types';
 import { getLineManpower, getAllLineManpower, saveLineManpower, deleteLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { normalizeDateStr, getTodayDateStr } from '../utils/date';
+import { compareSizes } from '../utils/size';
 import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PdfExportModal } from './PdfExportModal';
@@ -48,19 +49,6 @@ export const WipTable: React.FC<WipTableProps> = ({
   const [manpowerTick, setManpowerTick] = useState<number>(0);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
   const [spoSortOrder, setSpoSortOrder] = useState<'asc' | 'desc'>('asc');
-
-  // Apparel size order hierarchy for sorting sizes within each SPO
-  const SIZE_ORDER = ['2xs', 'xs', 's', 'm', 'l', 'xl', '2xl', 'xxl', '3xl', 'xxxl', '4xl', '5xl', '6xl'];
-  const compareSizes = (a?: string, b?: string) => {
-    const cleanA = (a || '').toLowerCase().trim();
-    const cleanB = (b || '').toLowerCase().trim();
-    const idxA = SIZE_ORDER.indexOf(cleanA);
-    const idxB = SIZE_ORDER.indexOf(cleanB);
-    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-    if (idxA !== -1) return -1;
-    if (idxB !== -1) return 1;
-    return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
-  };
 
   const getItemDate = (item: WipItem) =>
     normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : '')) || getTodayDateStr();

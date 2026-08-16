@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { WipItem, ScanDistribusiItem } from '../types';
 import { normalizeDateStr } from '../utils/date';
+import { getCanonicalSizeKey, compareSizes } from '../utils/size';
 import {
   ArrowRightLeft,
   Search,
@@ -46,7 +47,7 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
 
   const cleanKey = (str?: string) => (str ? str.trim().toUpperCase() : '');
   const cleanSpo = (spo?: string) => (spo ? spo.replace(/\s+/g, '').toLowerCase() : '');
-  const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanSize = (sz?: string) => (sz ? getCanonicalSizeKey(sz) : '');
 
   const getWipDate = (item: WipItem) => {
     return normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : ''));
@@ -129,7 +130,13 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
       });
     });
 
-    return rows.sort((a, b) => b.date.localeCompare(a.date) || a.line.localeCompare(b.line) || a.spo.localeCompare(b.spo));
+    return rows.sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        a.line.localeCompare(b.line) ||
+        a.spo.localeCompare(b.spo, undefined, { numeric: true }) ||
+        compareSizes(a.size, b.size)
+    );
   }, [wipItems, scanItems]);
 
   // Filter rows
