@@ -25,7 +25,7 @@ import { OutputReconciliation } from './components/OutputReconciliation';
 import { ScanDistribusiComparison } from './components/ScanDistribusiComparison';
 import { DataSourceModal } from './components/DataSourceModal';
 import { GoogleSheetsExportModal } from './components/GoogleSheetsExportModal';
-import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft, Calendar, Check, Loader2 } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, ArrowRightLeft, Calendar, Check, Loader2, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function App() {
   // Navigation State
@@ -86,7 +86,6 @@ export default function App() {
   });
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
-  const [isSyncingSpreadsheet, setIsSyncingSpreadsheet] = useState<boolean>(false);
   const userHasMutatedWipRef = useRef<boolean>(false);
   const lastLocalMutationTimeRef = useRef<number>(0);
 
@@ -215,14 +214,13 @@ export default function App() {
     safeSetItem('wip_sewing_chk_items', JSON.stringify(chkItems));
   }, [chkItems]);
 
-  // Auto-sync background push to Google Sheets Web App whenever WIP is modified by user
+  // Auto-sync background push to Google Sheets Web App whenever WIP is modified by user (Seamless, non-blocking)
   useEffect(() => {
     const webAppUrl = getEffectiveWebAppUrl();
     const autoSync = safeGetItem('google_sheets_autosync');
     if (!webAppUrl || autoSync === 'false' || !userHasMutatedWipRef.current) return;
 
     setSyncStatus('syncing');
-    setIsSyncingSpreadsheet(true);
 
     const timer = setTimeout(async () => {
       try {
@@ -230,19 +228,35 @@ export default function App() {
         setSyncStatus('synced');
         userHasMutatedWipRef.current = false;
         lastLocalMutationTimeRef.current = Date.now();
-        setIsSyncingSpreadsheet(false);
         setTimeout(() => {
           setSyncStatus((curr) => (curr === 'synced' ? 'idle' : curr));
         }, 3000);
       } catch (err) {
         console.warn('Auto push Google Sheets background notice:', err);
         setSyncStatus('error');
-        setIsSyncingSpreadsheet(false);
       }
-    }, 500);
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [wipItems]);
+
+  const handleRetryPushSync = async () => {
+    const webAppUrl = getEffectiveWebAppUrl();
+    if (!webAppUrl) return;
+    setSyncStatus('syncing');
+    try {
+      await pushWebAppWipData(webAppUrl, { wipItems, spoOptions, chkItems });
+      setSyncStatus('synced');
+      userHasMutatedWipRef.current = false;
+      lastLocalMutationTimeRef.current = Date.now();
+      setTimeout(() => {
+        setSyncStatus((curr) => (curr === 'synced' ? 'idle' : curr));
+      }, 3000);
+    } catch (err) {
+      console.warn('Retry Google Sheets push failed:', err);
+      setSyncStatus('error');
+    }
+  };
 
   // Background Auto-Poll from Google Sheets Web App with conflict-free smart merge
   useEffect(() => {
@@ -476,26 +490,27 @@ export default function App() {
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
       const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
       const getItemDate = (i: WipItem) =>
-        normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+        normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : '')) || getTodayDateStr();
 
       const targetDate = normalizeDateStr(updatedItem.date) || getItemDate(updatedItem) || getTodayDateStr();
+      const targetLine = cleanLine(updatedItem.lineId);
+      const targetSpo = cleanSpo(updatedItem.spo);
+      const targetSize = cleanSize(updatedItem.size);
 
       // Check if item exists by id or STRICTLY by (lineId + spo + size + date)
-      // Must NOT match a different date to avoid overwriting previous days!
-      const existingIndex = prev.findIndex(
+      const existingMatch = prev.find(
         (item) =>
           (updatedItem.id && item.id === updatedItem.id && getItemDate(item) === targetDate) ||
-          (cleanLine(item.lineId) === cleanLine(updatedItem.lineId) &&
-            cleanSpo(item.spo) === cleanSpo(updatedItem.spo) &&
-            cleanSize(item.size) === cleanSize(updatedItem.size) &&
+          (cleanLine(item.lineId) === targetLine &&
+            cleanSpo(item.spo) === targetSpo &&
+            cleanSize(item.size) === targetSize &&
             getItemDate(item) === targetDate)
       );
 
-      const existingId = existingIndex >= 0 ? prev[existingIndex].id : undefined;
       const finalId =
-        (updatedItem.id && !updatedItem.id.startsWith('proj-') && existingIndex >= 0)
+        (updatedItem.id && !updatedItem.id.startsWith('proj-'))
           ? updatedItem.id
-          : existingId || `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${targetDate}-${Date.now()}`;
+          : (existingMatch ? existingMatch.id : `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${targetDate}-${Date.now()}`);
 
       const itemWithMeta: WipItem = {
         ...updatedItem,
@@ -507,16 +522,21 @@ export default function App() {
         updatedAt: nowIso,
       };
 
-      let next: WipItem[];
-      if (existingIndex >= 0) {
-        next = [...prev];
-        next[existingIndex] = itemWithMeta;
-      } else {
-        next = [itemWithMeta, ...prev];
-      }
+      // Filter out any existing item with the same Line, SPO, Size, and Date (or same final ID) to OVERWRITE it completely
+      const filteredPrev = prev.filter(
+        (item) =>
+          item.id !== finalId &&
+          !(
+            cleanLine(item.lineId) === targetLine &&
+            cleanSpo(item.spo) === targetSpo &&
+            cleanSize(item.size) === targetSize &&
+            getItemDate(item) === targetDate
+          )
+      );
+
+      let next: WipItem[] = [itemWithMeta, ...filteredPrev];
 
       // Automatically cascade Manpower & Jam Kerja to ALL other entries on the SAME Line and Date!
-      const targetLine = cleanLine(updatedItem.lineId);
       const nH = updatedItem.normalHours !== undefined ? updatedItem.normalHours : 7;
       const nM = updatedItem.normalMp !== undefined ? updatedItem.normalMp : 25;
       const oH = updatedItem.overtimeHours !== undefined ? updatedItem.overtimeHours : 0;
@@ -546,8 +566,9 @@ export default function App() {
         });
       }
 
-      safeSetItem('wip_sewing_items', JSON.stringify(next));
-      return next;
+      const deduplicatedNext = mergeDuplicateWipItems(next);
+      safeSetItem('wip_sewing_items', JSON.stringify(deduplicatedNext));
+      return deduplicatedNext;
     });
 
     if (updatedItem.lineId && activeLeader) {
@@ -676,6 +697,7 @@ export default function App() {
         onOpenDataSource={() => setIsDataSourceModalOpen(true)}
         onOpenGoogleSheets={() => setIsGoogleSheetsModalOpen(true)}
         onResetData={handleResetData}
+        onRetrySync={handleRetryPushSync}
         totalLines={lines.length}
         activeLinesCount={activeLinesCount}
         syncStatus={syncStatus}
@@ -840,32 +862,42 @@ export default function App() {
         onClearAllWip={handleClearAllWip}
       />
 
-      {/* Fullscreen Syncing Loading Overlay (Prevents mis-clicks and assures clean single-input persistence) */}
-      {isSyncingSpreadsheet && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center p-6 select-none animate-fadeIn text-white">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl flex flex-col items-center space-y-4">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center">
-                <Loader2 className="w-9 h-9 text-blue-400 animate-spin" />
+      {/* Non-blocking Floating Sync Indicator (Google Sheets / Docs style) */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end pointer-events-none">
+        <div className="pointer-events-auto transition-all duration-300">
+          {syncStatus === 'syncing' && (
+            <div className="flex items-center gap-2.5 px-4 py-2 bg-slate-900/90 text-white backdrop-blur-md rounded-2xl shadow-xl border border-slate-700/80 text-xs animate-fadeIn">
+              <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+              <span className="font-medium">Menyimpan ke Google Sheets...</span>
+            </div>
+          )}
+
+          {syncStatus === 'synced' && (
+            <div className="flex items-center gap-2.5 px-4 py-2 bg-emerald-950/90 text-emerald-200 backdrop-blur-md rounded-2xl shadow-xl border border-emerald-700/60 text-xs animate-fadeIn">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-semibold">Semua perubahan tersimpan di Spreadsheet</span>
+            </div>
+          )}
+
+          {syncStatus === 'error' && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-rose-950/95 text-rose-100 backdrop-blur-md rounded-2xl shadow-2xl border border-rose-700/80 text-xs animate-shake">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <div>
+                <p className="font-bold">Gagal tersambung ke Spreadsheet</p>
+                <p className="text-[10px] text-rose-300">Data tersimpan di perangkat lokal</p>
               </div>
-              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center absolute -bottom-1 -right-1 border-2 border-slate-900 shadow-md">
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-              </div>
+              <button
+                type="button"
+                onClick={handleRetryPushSync}
+                className="flex items-center gap-1 px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer ml-1 active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Ulangi</span>
+              </button>
             </div>
-            <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-white tracking-wide">
-                Menyinkronkan ke Spreadsheet...
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Mohon tunggu 1–2 detik, data sedang dicatat ke Google Sheets. Layar dikunci sebentar agar data tersimpan sempurna tanpa double.
-              </p>
-            </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full w-full animate-pulse"></div>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 font-medium">

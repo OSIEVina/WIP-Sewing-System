@@ -8,6 +8,7 @@ interface HeaderProps {
   onOpenDataSource: () => void;
   onOpenGoogleSheets?: () => void;
   onResetData: () => void;
+  onRetrySync?: () => void;
   totalLines: number;
   activeLinesCount: number;
   syncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDataSource,
   onOpenGoogleSheets,
   onResetData,
+  onRetrySync,
   totalLines,
   activeLinesCount,
   syncStatus = 'idle',
@@ -70,9 +72,40 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls */}
         <div className="flex items-center space-x-2">
           {syncStatus !== 'idle' && (
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-semibold text-emerald-800">
-              <span className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-500 animate-ping' : syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-              <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'synced' ? 'Auto-Synced' : 'Sync Error'}</span>
+            <div
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition ${
+                syncStatus === 'syncing'
+                  ? 'bg-amber-50 border border-amber-200 text-amber-800'
+                  : syncStatus === 'synced'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border border-rose-200 text-rose-800'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  syncStatus === 'syncing'
+                    ? 'bg-amber-500 animate-ping'
+                    : syncStatus === 'synced'
+                    ? 'bg-emerald-500'
+                    : 'bg-rose-500'
+                }`}
+              ></span>
+              <span>
+                {syncStatus === 'syncing'
+                  ? 'Menyimpan...'
+                  : syncStatus === 'synced'
+                  ? 'Tersimpan di Sheet'
+                  : 'Gagal Simpan'}
+              </span>
+              {syncStatus === 'error' && onRetrySync && (
+                <button
+                  type="button"
+                  onClick={onRetrySync}
+                  className="ml-1 text-[10px] bg-rose-600 hover:bg-rose-700 text-white font-bold px-2 py-0.5 rounded transition cursor-pointer"
+                >
+                  Ulangi
+                </button>
+              )}
             </div>
           )}
 

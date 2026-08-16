@@ -545,16 +545,17 @@ export async function fetchLiveWipSheetCsv(customSpreadsheetId?: string): Promis
 }
 
 /**
- * Smart merge function to combine duplicate records (Line + SPO + Size + Date) and preserve non-zero inputs & latest edits
+ * Smart merge function to combine duplicate records (Line + SPO + Size + Date) and cleanly overwrite with latest edits
  */
 export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
-  const getItemDate = (i: WipItem) => normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+  const getItemDate = (i: WipItem) => normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : '')) || getTodayDateStr();
 
   const map = new Map<string, WipItem>();
   items.forEach((rawItem) => {
+    if (!rawItem || !rawItem.spo || !rawItem.lineId) return;
     const itemDate = getItemDate(rawItem);
     const item: WipItem = {
       ...rawItem,
@@ -568,58 +569,21 @@ export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
       const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const itemTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
 
-      let base: WipItem, incoming: WipItem;
-      if (itemTime > existingTime) {
-        base = existing;
-        incoming = item; // incoming is newer
-      } else {
-        base = item;
-        incoming = existing; // existing is newer
-      }
-
-      // Check if incoming has any non-zero WIP / production activity
-      const incomingHasData =
-        (incoming.inHariIni || 0) > 0 ||
-        (incoming.outSewing || 0) > 0 ||
-        (incoming.wip0 || 0) > 0 ||
-        (incoming.wip1 || 0) > 0 ||
-        (incoming.wip2 || 0) > 0 ||
-        (incoming.wip3 || 0) > 0 ||
-        (incoming.wip4 || 0) > 0 ||
-        (incoming.wip5 || 0) > 0 ||
-        (incoming.outPacking || 0) > 0;
-
-      const baseHasData =
-        (base.inHariIni || 0) > 0 ||
-        (base.outSewing || 0) > 0 ||
-        (base.wip0 || 0) > 0 ||
-        (base.wip1 || 0) > 0 ||
-        (base.wip2 || 0) > 0 ||
-        (base.wip3 || 0) > 0 ||
-        (base.wip4 || 0) > 0 ||
-        (base.wip5 || 0) > 0 ||
-        (base.outPacking || 0) > 0;
-
-      let merged: WipItem;
-      if (incomingHasData || !baseHasData) {
-        merged = {
-          ...base,
-          ...incoming,
+      if (itemTime >= existingTime) {
+        // Newer item fully overwrites previous record in-place
+        map.set(key, {
+          ...existing,
+          ...item,
           date: itemDate,
-          id: incoming.id && !incoming.id.startsWith('wip-imp-') ? incoming.id : (base.id || incoming.id),
-          qtyOrder: incoming.qtyOrder || base.qtyOrder || 0,
-        };
+          id: item.id && !item.id.startsWith('proj-') ? item.id : existing.id,
+        });
       } else {
-        // base had real data while incoming was an empty placeholder
-        merged = {
-          ...incoming,
-          ...base,
+        map.set(key, {
+          ...item,
+          ...existing,
           date: itemDate,
-          id: base.id && !base.id.startsWith('wip-imp-') ? base.id : (incoming.id || base.id),
-          qtyOrder: base.qtyOrder || incoming.qtyOrder || 0,
-        };
+        });
       }
-      map.set(key, merged);
     }
   });
 

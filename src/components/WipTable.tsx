@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { WipItem, ChkItem, ScanDistribusiItem } from '../types';
 import { getLineManpower, getAllLineManpower, saveLineManpower, deleteLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { normalizeDateStr, getTodayDateStr } from '../utils/date';
-import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle } from 'lucide-react';
+import { Search, Download, Trash2, Edit3, Table, FileSpreadsheet, FileText, X, Check, Layers, Calendar, Upload, Users, Clock, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PdfExportModal } from './PdfExportModal';
 
@@ -47,6 +47,20 @@ export const WipTable: React.FC<WipTableProps> = ({
   const [editModalItem, setEditModalItem] = useState<WipItem | null>(null);
   const [manpowerTick, setManpowerTick] = useState<number>(0);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+  const [spoSortOrder, setSpoSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Apparel size order hierarchy for sorting sizes within each SPO
+  const SIZE_ORDER = ['2xs', 'xs', 's', 'm', 'l', 'xl', '2xl', 'xxl', '3xl', 'xxxl', '4xl', '5xl', '6xl'];
+  const compareSizes = (a?: string, b?: string) => {
+    const cleanA = (a || '').toLowerCase().trim();
+    const cleanB = (b || '').toLowerCase().trim();
+    const idxA = SIZE_ORDER.indexOf(cleanA);
+    const idxB = SIZE_ORDER.indexOf(cleanB);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
+  };
 
   const getItemDate = (item: WipItem) =>
     normalizeDateStr(item.date || (item.createdAt ? item.createdAt.split('T')[0] : '')) || getTodayDateStr();
@@ -275,14 +289,32 @@ export const WipTable: React.FC<WipTableProps> = ({
     return list;
   }, [lineDatePairs, manpowerTick]);
 
-  // Group items by SPO to render TOTAL rows as seen in screenshot
-  const spoGroups: Record<string, WipItem[]> = {};
-  filteredItems.forEach((item) => {
-    if (!spoGroups[item.spo]) {
-      spoGroups[item.spo] = [];
-    }
-    spoGroups[item.spo].push(item);
-  });
+  // Group items by SPO and sort SPOs + sizes from smallest to largest
+  const sortedSpoKeys = useMemo(() => {
+    const keys = Array.from(new Set(filteredItems.map((i) => i.spo).filter(Boolean)));
+    return keys.sort((a, b) => {
+      const cmp = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      return spoSortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredItems, spoSortOrder]);
+
+  const spoGroups = useMemo(() => {
+    const groups: Record<string, WipItem[]> = {};
+    filteredItems.forEach((item) => {
+      const key = item.spo || '-';
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(item);
+    });
+
+    // Sort sizes inside each SPO group in ascending order (XS -> S -> M -> L -> XL ...)
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => compareSizes(a.size, b.size));
+    });
+
+    return groups;
+  }, [filteredItems]);
 
   const handleStartEdit = (item: WipItem) => {
     setEditModalItem({
@@ -731,6 +763,20 @@ export const WipTable: React.FC<WipTableProps> = ({
             />
           </div>
 
+          {/* SPO Sort Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setSpoSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            id="btn-sort-spo"
+            className="flex items-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
+            title="Klik untuk mengubah urutan SPO (Terkecil ke Terbesar / Terbesar ke Terkecil)"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+            <span>
+              SPO: <strong className="text-blue-700">{spoSortOrder === 'asc' ? 'Terkecil ke Terbesar' : 'Terbesar ke Terkecil'}</strong>
+            </span>
+          </button>
+
           {!hideExportButtons && (
             <>
               <button
@@ -773,7 +819,18 @@ export const WipTable: React.FC<WipTableProps> = ({
           <thead>
             <tr className="bg-slate-50 text-slate-600 font-mono border-b border-slate-200 text-[10px] uppercase tracking-wider font-semibold">
               <th className="p-2.5 border-r border-slate-200 min-w-[95px] text-slate-800 bg-slate-100/60">TANGGAL</th>
-              <th className="p-2.5 border-r border-slate-200">SPO</th>
+              <th
+                onClick={() => setSpoSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                className="p-2.5 border-r border-slate-200 cursor-pointer hover:bg-slate-200/80 transition select-none group"
+                title="Klik untuk mengubah urutan SPO (Terkecil ke Terbesar / Terbesar ke Terkecil)"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-slate-800 group-hover:text-blue-700">SPO</span>
+                  <span className="text-[10px] text-blue-600 font-bold">
+                    {spoSortOrder === 'asc' ? '▲' : '▼'}
+                  </span>
+                </div>
+              </th>
               <th className="p-2.5 border-r border-slate-200 min-w-[200px]">STYLE</th>
               <th className="p-2.5 border-r border-slate-200 min-w-[120px]">COLOR</th>
               <th className="p-2.5 border-r border-slate-200">SIZE</th>
@@ -798,14 +855,16 @@ export const WipTable: React.FC<WipTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200/80 font-mono text-slate-700">
-            {Object.keys(spoGroups).length === 0 ? (
+            {sortedSpoKeys.length === 0 ? (
               <tr>
                 <td colSpan={23} className="p-8 text-center text-slate-400 text-xs font-sans">
                   Tidak ada data WIP untuk ditampilkan.
                 </td>
               </tr>
             ) : (
-              (Object.entries(spoGroups) as [string, WipItem[]][]).map(([spoCode, groupItems], groupIdx) => {
+              sortedSpoKeys.map((spoCode, groupIdx) => {
+                const groupItems = spoGroups[spoCode] || [];
+                if (groupItems.length === 0) return null;
                 // Calculate Totals for this SPO
                 const totalQty = groupItems.reduce((s, i) => s + i.qtyOrder, 0);
                 const totalInHariIni = groupItems.reduce((s, i) => s + i.inHariIni, 0);
