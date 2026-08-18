@@ -29,8 +29,8 @@ body {
     box-shadow: none !important;
   }
   @page {
-    size: landscape;
-    margin: 10mm;
+    size: portrait;
+    margin: 6mm;
   }
 }
 

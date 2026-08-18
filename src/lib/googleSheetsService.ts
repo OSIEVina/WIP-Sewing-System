@@ -622,7 +622,7 @@ export async function fetchWebAppWipData(webAppUrl: string): Promise<WipItem[] |
       }
     }
   } catch (err) {
-    console.warn('Apps Script GET failed:', err);
+    // Info: Apps Script redirects to Google Login when 'Who has access' is not set to 'Anyone'
     return null;
   }
 

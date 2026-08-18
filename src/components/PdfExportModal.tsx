@@ -66,6 +66,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     globalReportDate || availableDates[0] || todayStr
   );
   const [selectedBuilding, setSelectedBuilding] = useState<'ALL' | 'AB' | 'CD'>('ALL');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -278,22 +279,23 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       }
 
       const formattedDateHeader = formatDateIndo(targetDate);
+      const isPortrait = orientation === 'portrait';
 
       let htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
-          <title>WIP LINE REPORT - ${targetDate}</title>
+          <title>WIP LINE REPORT (${isPortrait ? 'PORTRAIT' : 'LANDSCAPE'}) - ${targetDate}</title>
           <style>
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
-            body { font-family: 'Arial Narrow', Arial, sans-serif; font-size: 10px; color: #000; margin: 10px; background: #fff; }
-            .building-header-banner { background-color: #1e293b !important; color: #ffffff !important; font-size: 14px; font-weight: 900; padding: 6px 12px; margin-top: 20px; margin-bottom: 12px; border: 1.5px solid #000; text-transform: uppercase; letter-spacing: 1px; font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: space-between; }
-            .line-container { margin-bottom: 25px; page-break-inside: avoid; border: 1px solid #000; }
-            .line-header-banner { background-color: #ffff00 !important; color: #000 !important; font-size: 13px; font-weight: 900; padding: 4px 8px; border-bottom: 1px solid #000; font-family: Arial, sans-serif; text-transform: uppercase; }
-            .periode-subtitle { font-size: 10px; font-weight: bold; margin-bottom: 2px; padding: 2px 8px; font-family: Arial, sans-serif; border-bottom: 1px solid #000; background-color: #ffffff; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: monospace; }
-            th, td { border: 1px solid #000; padding: 3px 4px; text-align: center; }
-            th { background-color: #e2e8f0 !important; font-weight: bold; font-family: Arial, sans-serif; font-size: 9px; }
+            body { font-family: 'Arial Narrow', Arial, sans-serif; font-size: ${isPortrait ? '8px' : '10px'}; color: #000; margin: ${isPortrait ? '4px' : '10px'}; background: #fff; }
+            .building-header-banner { background-color: #1e293b !important; color: #ffffff !important; font-size: ${isPortrait ? '12px' : '14px'}; font-weight: 900; padding: ${isPortrait ? '4px 8px' : '6px 12px'}; margin-top: ${isPortrait ? '12px' : '20px'}; margin-bottom: ${isPortrait ? '8px' : '12px'}; border: 1.5px solid #000; text-transform: uppercase; letter-spacing: 0.5px; font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: space-between; }
+            .line-container { margin-bottom: ${isPortrait ? '16px' : '25px'}; page-break-inside: avoid; border: 1px solid #000; }
+            .line-header-banner { background-color: #ffff00 !important; color: #000 !important; font-size: ${isPortrait ? '11px' : '13px'}; font-weight: 900; padding: ${isPortrait ? '3px 6px' : '4px 8px'}; border-bottom: 1px solid #000; font-family: Arial, sans-serif; text-transform: uppercase; }
+            .periode-subtitle { font-size: ${isPortrait ? '8.5px' : '10px'}; font-weight: bold; margin-bottom: 2px; padding: 2px 6px; font-family: Arial, sans-serif; border-bottom: 1px solid #000; background-color: #ffffff; }
+            table { width: 100%; border-collapse: collapse; font-size: ${isPortrait ? '7px' : '9px'}; font-family: monospace; table-layout: ${isPortrait ? 'fixed' : 'auto'}; }
+            th, td { border: 1px solid #000; padding: ${isPortrait ? '2px 1px' : '3px 4px'}; text-align: center; overflow: hidden; word-break: break-word; }
+            th { background-color: #e2e8f0 !important; font-weight: bold; font-family: Arial, sans-serif; font-size: ${isPortrait ? '7px' : '9px'}; }
             th.th-wip-finish { background-color: #dbeafe !important; }
             .bg-wip-finish-cell { background-color: #eff6ff !important; }
             .text-left { text-align: left; }
@@ -301,14 +303,14 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             .text-blue-total { color: #0000ff !important; font-weight: bold; }
             .font-bold { font-weight: bold; }
             .font-black { font-weight: 900; }
-            .footer-summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 6px; background-color: #f8fafc; border-top: 1px solid #000; font-size: 9px; }
-            .card-box { border: 1px solid #94a3b8; padding: 4px; background: #ffffff !important; }
+            .footer-summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: ${isPortrait ? '2px' : '4px'}; padding: ${isPortrait ? '4px' : '6px'}; background-color: #f8fafc; border-top: 1px solid #000; font-size: ${isPortrait ? '7.5px' : '9px'}; }
+            .card-box { border: 1px solid #94a3b8; padding: ${isPortrait ? '2px' : '4px'}; background: #ffffff !important; }
             .card-yellow { background-color: #ffff00 !important; font-weight: bold; border: 1px solid #ca8a04; }
             .card-purple { background-color: #e9d5ff !important; font-weight: bold; border: 1px solid #a855f7; }
             .page-break { page-break-before: always !important; break-before: page !important; }
             @media print {
               body { margin: 0; }
-              @page { size: landscape; margin: 8mm; }
+              @page { size: ${isPortrait ? 'portrait' : 'landscape'}; margin: ${isPortrait ? '4mm' : '8mm'}; }
             }
           </style>
         </head>
@@ -680,8 +682,38 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               </button>
             </div>
 
-            {/* Date Selection Controls */}
+            {/* Date and Orientation Selection Controls */}
             <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+              {/* Orientation Switcher */}
+              <div className="flex items-center bg-white p-1 rounded-xl border border-slate-300 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setOrientation('portrait')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    orientation === 'portrait'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                  title="Cetak format Tegak / Portrait (Cocok untuk kertas A4)"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Portrait</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrientation('landscape')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    orientation === 'landscape'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                  title="Cetak format Mendatar / Landscape"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Landscape</span>
+                </button>
+              </div>
+
               <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-300 shadow-xs">
                 <span className="text-xs font-bold text-slate-600">Pilih Tanggal:</span>
                 <input
@@ -1004,6 +1036,11 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             <strong className="text-slate-900">
               {selectedBuilding === 'ALL' ? 'Semua Gedung (AB & CD)' : `Gedung ${selectedBuilding}`}
             </strong>
+            <span className="text-slate-300">|</span>
+            <span>Orientasi: </span>
+            <strong className="text-blue-600 uppercase">
+              {orientation}
+            </strong>
           </div>
 
           <div className="flex items-center gap-3">
@@ -1026,7 +1063,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               ) : (
                 <>
                   <Printer className="w-4 h-4" />
-                  <span>Cetak / Save PDF Format Excel</span>
+                  <span>Cetak PDF ({orientation === 'portrait' ? 'Portrait' : 'Landscape'})</span>
                 </>
               )}
             </button>
