@@ -165,10 +165,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
     const hasExplicitData = explicitOnTarget.length > 0;
 
-    // Get all unique SPO + Size combinations for this line
+    // Get all unique SPO + Color + Size combinations for this line
     const uniqueKeys = new Set<string>();
     lineItems.forEach((i) => {
-      uniqueKeys.add(`${(i.spo || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}`);
+      uniqueKeys.add(`${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}`);
     });
 
     const computedItems: (WipItem & {
@@ -182,14 +182,14 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
     uniqueKeys.forEach((key) => {
       const explicit = explicitOnTarget.find(
-        (i) => `${(i.spo || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key
+        (i) => `${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key
       );
 
       // Cumulative calculations up to targetDate
       const allPriorAndCurrent = lineItems.filter((i) => {
         const d = normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
         return (
-          `${(i.spo || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key &&
+          `${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key &&
           d <= normTargetDate
         );
       });
@@ -223,7 +223,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         const priorItems = lineItems.filter((i) => {
           const d = normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
           return (
-            `${(i.spo || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key &&
+            `${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key &&
             d < normTargetDate
           );
         });

@@ -124,6 +124,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   // Helpers for string normalization
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
 
   // Load line-level Manpower data on lineId, entryDate, or wipItems change
@@ -161,18 +162,19 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const getItemDateStr = (i: WipItem) =>
     normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
-  // Ref to track the currently loaded Line + SPO + Size + Date selection
+  // Ref to track the currently loaded Line + SPO + Color + Size + Date selection
   const lastLoadedKeyRef = useRef<string>('');
 
-  // Auto load existing entry when user changes entryDate, selectedSpo, size, or lineId, or when wipItems changes
+  // Auto load existing entry when user changes entryDate, selectedSpo, color, size, or lineId, or when wipItems changes
   useEffect(() => {
     const normEntryDate = normalizeDateStr(entryDate);
-    const currentKey = `${cleanLine(lineId)}_${cleanSpo(selectedSpo)}_${cleanSize(size)}_${normEntryDate}`;
+    const currentKey = `${cleanLine(lineId)}_${cleanSpo(selectedSpo)}_${cleanColor(color)}_${cleanSize(size)}_${normEntryDate}`;
 
     const existing = (wipItems || []).find(
       (item) =>
         cleanLine(item.lineId) === cleanLine(lineId) &&
         cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
+        cleanColor(item.color) === cleanColor(color) &&
         cleanSize(item.size) === cleanSize(size) &&
         getItemDateStr(item) === normEntryDate
     );

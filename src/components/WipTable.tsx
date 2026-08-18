@@ -66,6 +66,7 @@ export const WipTable: React.FC<WipTableProps> = ({
 
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
 
   // Helper to resolve dynamic CHK10 inspection value for a given WIP item
@@ -113,12 +114,13 @@ export const WipTable: React.FC<WipTableProps> = ({
     return item.chk10Scan || 0;
   };
 
-  // Formula: Akumulasi Output Sewing - Akumulasi Out Packing untuk SPO & Size ini di Line ini (tanpa memandang hari)
+  // Formula: Akumulasi Output Sewing - Akumulasi Out Packing untuk SPO, Color & Size ini di Line ini (tanpa memandang hari)
   const getItemWipFinish = (item: WipItem) => {
     const matchingItems = items.filter(
       (i) =>
         cleanLine(i.lineId) === cleanLine(item.lineId) &&
         cleanSpo(i.spo) === cleanSpo(item.spo) &&
+        cleanColor(i.color) === cleanColor(item.color) &&
         cleanSize(i.size) === cleanSize(item.size)
     );
     const totalOutSewing = matchingItems.reduce((sum, i) => sum + (i.outSewing || 0), 0);
@@ -142,12 +144,13 @@ export const WipTable: React.FC<WipTableProps> = ({
     return 0;
   };
 
-  // Helper to calculate carryover values for a specific SPO + Size combination up to a given date
-  const getCarryoverValues = (lineId: string, spo: string, size: string, targetDate: string) => {
+  // Helper to calculate carryover values for a specific SPO + Color + Size combination up to a given date
+  const getCarryoverValues = (lineId: string, spo: string, color: string, size: string, targetDate: string) => {
     const priorItems = items.filter(
       (i) =>
         cleanLine(i.lineId) === cleanLine(lineId) &&
         cleanSpo(i.spo) === cleanSpo(spo) &&
+        cleanColor(i.color) === cleanColor(color) &&
         cleanSize(i.size) === cleanSize(size) &&
         getItemDate(i) < targetDate
     );
@@ -178,12 +181,12 @@ export const WipTable: React.FC<WipTableProps> = ({
     const normReportDate = normalizeDateStr(globalReportDate);
     const existingOnDate = items.filter((item) => getItemDate(item) === normReportDate);
     const existingKeys = new Set(
-      existingOnDate.map((i) => `${cleanLine(i.lineId)}|${cleanSpo(i.spo)}|${cleanSize(i.size)}`)
+      existingOnDate.map((i) => `${cleanLine(i.lineId)}|${cleanSpo(i.spo)}|${cleanColor(i.color)}|${cleanSize(i.size)}`)
     );
 
     const uniqueCombinationMap = new Map<string, { templateItem: WipItem; earliestDate: string }>();
     items.forEach((item) => {
-      const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanSize(item.size)}`;
+      const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanColor(item.color)}|${cleanSize(item.size)}`;
       const iDate = getItemDate(item);
       if (!uniqueCombinationMap.has(key)) {
         uniqueCombinationMap.set(key, { templateItem: item, earliestDate: iDate });
@@ -207,12 +210,13 @@ export const WipTable: React.FC<WipTableProps> = ({
         const { carryoverWipSewing, carryoverWipFinish } = getCarryoverValues(
           templateItem.lineId,
           templateItem.spo,
+          templateItem.color,
           templateItem.size,
           normReportDate
         );
 
         const projectedItem: WipItem = {
-          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.size}-${normReportDate}`,
+          id: `proj-${templateItem.lineId}-${templateItem.spo}-${templateItem.color || 'col'}-${templateItem.size}-${normReportDate}`,
           lineId: templateItem.lineId,
           spo: templateItem.spo,
           style: templateItem.style,
@@ -384,6 +388,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       const { pastScanIn, pastOutSewing, pastOutPacking, carryoverWipSewing } = getCarryoverValues(
         editModalItem.lineId,
         editModalItem.spo,
+        editModalItem.color,
         editModalItem.size,
         targetDate
       );

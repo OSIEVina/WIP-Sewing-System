@@ -550,6 +550,7 @@ export async function fetchLiveWipSheetCsv(customSpreadsheetId?: string): Promis
 export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
   const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
   const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
   const getItemDate = (i: WipItem) => normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : '')) || getTodayDateStr();
 
@@ -561,7 +562,7 @@ export function mergeDuplicateWipItems(items: WipItem[]): WipItem[] {
       ...rawItem,
       date: itemDate,
     };
-    const key = `${cleanLine(item.lineId)}_${cleanSpo(item.spo)}_${cleanSize(item.size)}_${itemDate}`;
+    const key = `${cleanLine(item.lineId)}_${cleanSpo(item.spo)}_${cleanColor(item.color)}_${cleanSize(item.size)}_${itemDate}`;
     if (!map.has(key)) {
       map.set(key, item);
     } else {
