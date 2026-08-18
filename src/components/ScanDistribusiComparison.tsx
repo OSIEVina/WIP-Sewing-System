@@ -47,6 +47,7 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
 
   const cleanKey = (str?: string) => (str ? str.trim().toUpperCase() : '');
   const cleanSpo = (spo?: string) => (spo ? spo.replace(/\s+/g, '').toLowerCase() : '');
+  const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? getCanonicalSizeKey(sz) : '');
 
   const getWipDate = (item: WipItem) => {
@@ -87,11 +88,12 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
     wipItems.forEach((w) => {
       const line = cleanKey(w.lineId) || 'A01';
       const spo = w.spo ? w.spo.trim() : '';
+      const color = w.color ? w.color.trim() : '';
       const size = w.size ? w.size.trim() : '';
       const date = getWipDate(w) || '2026-08-01';
       if (!spo || !size) return;
 
-      const key = `${line}_${cleanSpo(spo)}_${cleanSize(size)}_${date}`;
+      const key = `${line}_${cleanSpo(spo)}_${cleanColor(color)}_${cleanSize(size)}_${date}`;
       if (!map.has(key)) {
         map.set(key, { line, spo, size, date, scanIn: 0, scanDist: 0 });
       }
@@ -102,11 +104,12 @@ export const ScanDistribusiComparison: React.FC<ScanDistribusiComparisonProps> =
     scanItems.forEach((s) => {
       const line = cleanKey(s.line) || 'A01';
       const spo = s.spo ? s.spo.trim() : '';
+      const color = s.color ? s.color.trim() : '';
       const size = s.size ? s.size.trim() : '';
       const date = s.date || '2026-08-01';
       if (!spo || !size) return;
 
-      const key = `${line}_${cleanSpo(spo)}_${cleanSize(size)}_${date}`;
+      const key = `${line}_${cleanSpo(spo)}_${cleanColor(color)}_${cleanSize(size)}_${date}`;
       if (!map.has(key)) {
         map.set(key, { line, spo, size, date, scanIn: 0, scanDist: 0 });
       }

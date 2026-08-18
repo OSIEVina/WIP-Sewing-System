@@ -273,13 +273,14 @@ export default function App() {
           setWipItems((current) => {
             const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
             const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+            const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
             const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
             const getItemDate = (i: WipItem) =>
               normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
             const localMap = new Map<string, WipItem>();
             current.forEach((item) => {
-              const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanSize(item.size)}|${getItemDate(item)}`;
+              const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanColor(item.color)}|${cleanSize(item.size)}|${getItemDate(item)}`;
               localMap.set(key, item);
             });
 
@@ -287,7 +288,7 @@ export default function App() {
             const processedKeys = new Set<string>();
 
             fetchedWip.forEach((remoteItem) => {
-              const key = `${cleanLine(remoteItem.lineId)}|${cleanSpo(remoteItem.spo)}|${cleanSize(remoteItem.size)}|${getItemDate(remoteItem)}`;
+              const key = `${cleanLine(remoteItem.lineId)}|${cleanSpo(remoteItem.spo)}|${cleanColor(remoteItem.color)}|${cleanSize(remoteItem.size)}|${getItemDate(remoteItem)}`;
               processedKeys.add(key);
               const local = localMap.get(key);
               if (!local) {
@@ -306,7 +307,7 @@ export default function App() {
 
             // Keep any local item not present in remote yet
             current.forEach((localItem) => {
-              const key = `${cleanLine(localItem.lineId)}|${cleanSpo(localItem.spo)}|${cleanSize(localItem.size)}|${getItemDate(localItem)}`;
+              const key = `${cleanLine(localItem.lineId)}|${cleanSpo(localItem.spo)}|${cleanColor(localItem.color)}|${cleanSize(localItem.size)}|${getItemDate(localItem)}`;
               if (!processedKeys.has(key)) {
                 merged.push(localItem);
               }
@@ -402,7 +403,15 @@ export default function App() {
 
   const handleAddNewSpoOption = (newSpo: SpoOption) => {
     setSpoOptions((prev) => {
-      if (prev.some((s) => s.spo === newSpo.spo)) return prev;
+      if (
+        prev.some(
+          (s) =>
+            s.spo.toLowerCase().trim() === newSpo.spo.toLowerCase().trim() &&
+            s.color.toLowerCase().trim() === newSpo.color.toLowerCase().trim()
+        )
+      ) {
+        return prev;
+      }
       return [newSpo, ...prev];
     });
   };
@@ -412,18 +421,21 @@ export default function App() {
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+      const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
       const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
       const getItemDate = (i: WipItem) =>
         normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
       let targetLine = '';
       let targetSpo = '';
+      let targetColor = '';
       let targetSize = '';
       let targetDate = '';
 
       if (targetItem) {
         targetLine = cleanLine(targetItem.lineId);
         targetSpo = cleanSpo(targetItem.spo);
+        targetColor = cleanColor(targetItem.color);
         targetSize = cleanSize(targetItem.size);
         targetDate = getItemDate(targetItem) || normalizeDateStr(globalReportDate) || getTodayDateStr();
       } else {
@@ -431,6 +443,7 @@ export default function App() {
         if (found) {
           targetLine = cleanLine(found.lineId);
           targetSpo = cleanSpo(found.spo);
+          targetColor = cleanColor(found.color);
           targetSize = cleanSize(found.size);
           targetDate = getItemDate(found) || normalizeDateStr(globalReportDate) || getTodayDateStr();
         } else if (id.startsWith('proj-')) {
@@ -451,15 +464,18 @@ export default function App() {
 
         const itemLine = cleanLine(item.lineId);
         const itemSpo = cleanSpo(item.spo);
+        const itemColor = cleanColor(item.color);
         const itemSize = cleanSize(item.size);
         const itemDate = getItemDate(item);
 
         if (
           targetLine &&
           targetSpo &&
+          targetColor &&
           targetSize &&
           itemLine === targetLine &&
           itemSpo === targetSpo &&
+          itemColor === targetColor &&
           itemSize === targetSize
         ) {
           // Rule: Data hari sebelumnya (< targetDate) TETAP ADA!
@@ -488,6 +504,7 @@ export default function App() {
     setWipItems((prev) => {
       const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
       const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+      const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
       const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
       const getItemDate = (i: WipItem) =>
         normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : '')) || getTodayDateStr();
@@ -495,14 +512,16 @@ export default function App() {
       const targetDate = normalizeDateStr(updatedItem.date) || getItemDate(updatedItem) || getTodayDateStr();
       const targetLine = cleanLine(updatedItem.lineId);
       const targetSpo = cleanSpo(updatedItem.spo);
+      const targetColor = cleanColor(updatedItem.color);
       const targetSize = cleanSize(updatedItem.size);
 
-      // Check if item exists by id or STRICTLY by (lineId + spo + size + date)
+      // Check if item exists by id or STRICTLY by (lineId + spo + color + size + date)
       const existingMatch = prev.find(
         (item) =>
           (updatedItem.id && item.id === updatedItem.id && getItemDate(item) === targetDate) ||
           (cleanLine(item.lineId) === targetLine &&
             cleanSpo(item.spo) === targetSpo &&
+            cleanColor(item.color) === targetColor &&
             cleanSize(item.size) === targetSize &&
             getItemDate(item) === targetDate)
       );
@@ -510,7 +529,7 @@ export default function App() {
       const finalId =
         (updatedItem.id && !updatedItem.id.startsWith('proj-'))
           ? updatedItem.id
-          : (existingMatch ? existingMatch.id : `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.size}-${targetDate}-${Date.now()}`);
+          : (existingMatch ? existingMatch.id : `wip-${updatedItem.lineId}-${updatedItem.spo}-${updatedItem.color || 'col'}-${updatedItem.size}-${targetDate}-${Date.now()}`);
 
       const itemWithMeta: WipItem = {
         ...updatedItem,
@@ -522,13 +541,14 @@ export default function App() {
         updatedAt: nowIso,
       };
 
-      // Filter out any existing item with the same Line, SPO, Size, and Date (or same final ID) to OVERWRITE it completely
+      // Filter out any existing item with the same Line, SPO, Color, Size, and Date (or same final ID) to OVERWRITE it completely
       const filteredPrev = prev.filter(
         (item) =>
           item.id !== finalId &&
           !(
             cleanLine(item.lineId) === targetLine &&
             cleanSpo(item.spo) === targetSpo &&
+            cleanColor(item.color) === targetColor &&
             cleanSize(item.size) === targetSize &&
             getItemDate(item) === targetDate
           )

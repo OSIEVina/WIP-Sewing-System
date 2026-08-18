@@ -205,13 +205,14 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
     }
 
     lastLoadedKeyRef.current = currentKey;
-  }, [entryDate, selectedSpo, size, lineId, wipItems]);
+  }, [entryDate, selectedSpo, color, size, lineId, wipItems]);
 
-  // Matching items for this SPO & Size on this Line
+  // Matching items for this SPO & Color & Size on this Line
   const matchingItems = (wipItems || []).filter(
     (item) =>
       cleanLine(item.lineId) === cleanLine(lineId) &&
       cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
+      cleanColor(item.color) === cleanColor(color) &&
       cleanSize(item.size) === cleanSize(size)
   );
 

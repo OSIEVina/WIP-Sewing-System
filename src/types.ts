@@ -71,6 +71,7 @@ export interface ChkItem {
   jamKe: number;
   line: string;
   spo: string;
+  color?: string;
   size: string;
   output: number;
   date?: string;
@@ -88,6 +89,7 @@ export interface ScanDistribusiItem {
   id: string;
   line: string;
   spo: string;
+  color?: string;
   date: string; // YYYY-MM-DD
   size: string;
   qtyPcs: number;
