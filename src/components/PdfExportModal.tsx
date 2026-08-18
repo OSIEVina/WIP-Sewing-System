@@ -209,7 +209,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             blcOrder: number;
             rowWipSewing: number;
           } = {
-            id: `proj-${lineId}-${latestPrior.spo}-${latestPrior.size}-${normTargetDate}`,
+            id: `proj-${lineId}-${latestPrior.spo}-${latestPrior.color || 'nocolor'}-${latestPrior.size}-${normTargetDate}-${computedItems.length}`,
             lineId,
             spo: latestPrior.spo,
             style: latestPrior.style,
@@ -293,9 +293,9 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             .line-container { margin-bottom: ${isPortrait ? '16px' : '25px'}; page-break-inside: avoid; border: 1px solid #000; }
             .line-header-banner { background-color: #ffff00 !important; color: #000 !important; font-size: ${isPortrait ? '11px' : '13px'}; font-weight: 900; padding: ${isPortrait ? '3px 6px' : '4px 8px'}; border-bottom: 1px solid #000; font-family: Arial, sans-serif; text-transform: uppercase; }
             .periode-subtitle { font-size: ${isPortrait ? '8.5px' : '10px'}; font-weight: bold; margin-bottom: 2px; padding: 2px 6px; font-family: Arial, sans-serif; border-bottom: 1px solid #000; background-color: #ffffff; }
-            table { width: 100%; border-collapse: collapse; font-size: ${isPortrait ? '7px' : '9px'}; font-family: monospace; table-layout: ${isPortrait ? 'fixed' : 'auto'}; }
-            th, td { border: 1px solid #000; padding: ${isPortrait ? '2px 1px' : '3px 4px'}; text-align: center; overflow: hidden; word-break: break-word; }
-            th { background-color: #e2e8f0 !important; font-weight: bold; font-family: Arial, sans-serif; font-size: ${isPortrait ? '7px' : '9px'}; }
+            table { width: 100%; border-collapse: collapse; font-size: ${isPortrait ? '7.5px' : '9px'}; font-family: monospace; table-layout: ${isPortrait ? 'fixed' : 'auto'}; }
+            th, td { border: 1px solid #000; padding: ${isPortrait ? '2px 1.5px' : '3px 4px'}; text-align: center; white-space: nowrap !important; overflow: hidden; text-overflow: clip; word-break: keep-all; }
+            th { background-color: #e2e8f0 !important; font-weight: bold; font-family: Arial, sans-serif; font-size: ${isPortrait ? '7.5px' : '9px'}; white-space: nowrap !important; }
             th.th-wip-finish { background-color: #dbeafe !important; }
             .bg-wip-finish-cell { background-color: #eff6ff !important; }
             .text-left { text-align: left; }
@@ -320,7 +320,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       const generateLinesHtml = (linesGroup: typeof allLinesToRender) => {
         let grpHtml = '';
         linesGroup.forEach(([lineId, { itemsList, hasExplicitData }]) => {
-          const mp = getLineManpower(lineId, targetDate);
+          const mp = getLineManpower(lineId, targetDate, itemsList);
           const dev = checkManpowerDeviation(mp);
 
           const spoGroups: Record<string, typeof itemsList> = {};
@@ -415,54 +415,54 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             grp.forEach((item) => {
               grpHtml += `
                 <tr>
-                  <td class="font-bold text-left">${item.spo}</td>
-                  <td class="text-left">${item.style}</td>
-                  <td class="text-left">${item.color}</td>
-                  <td class="font-bold">${item.size}</td>
-                  <td class="text-right">${item.qtyOrder?.toLocaleString() || '-'}</td>
+                  <td class="font-bold text-left">${item.spo || ''}</td>
+                  <td class="text-left">${item.style || ''}</td>
+                  <td class="text-left">${item.color || ''}</td>
+                  <td class="font-bold">${item.size || ''}</td>
+                  <td class="text-right">${item.qtyOrder ? item.qtyOrder.toLocaleString() : ''}</td>
                   <td>${item.unit || 'PCE'}</td>
-                  <td>${item.inHariIni || '-'}</td>
-                  <td>${item.wip0 || '-'}</td>
-                  <td>${item.wip1 || '-'}</td>
-                  <td>${item.wip2 || '-'}</td>
-                  <td>${item.wip3 || '-'}</td>
-                  <td>${item.wip4 || '-'}</td>
-                  <td>${item.wip5 || '-'}</td>
-                  <td class="font-bold">${item.rowWipSewing || '0'}</td>
-                  <td>${item.outSewing || '-'}</td>
-                  <td>${item.chk3d || '-'}</td>
-                  <td class="bg-wip-finish-cell font-bold">${item.wipFinish || '0'}</td>
-                  <td>${item.outPacking || '-'}</td>
-                  <td>${item.incum || '-'}</td>
-                  <td>${item.outcu || '-'}</td>
-                  <td>${item.blcOrder || '-'}</td>
+                  <td>${item.inHariIni || ''}</td>
+                  <td>${item.wip0 || ''}</td>
+                  <td>${item.wip1 || ''}</td>
+                  <td>${item.wip2 || ''}</td>
+                  <td>${item.wip3 || ''}</td>
+                  <td>${item.wip4 || ''}</td>
+                  <td>${item.wip5 || ''}</td>
+                  <td class="font-bold">${item.rowWipSewing || ''}</td>
+                  <td>${item.outSewing || ''}</td>
+                  <td>${item.chk3d || ''}</td>
+                  <td class="bg-wip-finish-cell font-bold">${item.wipFinish || ''}</td>
+                  <td>${item.outPacking || ''}</td>
+                  <td>${item.incum || ''}</td>
+                  <td>${item.outcu || ''}</td>
+                  <td>${item.blcOrder || ''}</td>
                 </tr>
               `;
             });
 
             // SPO TOTAL ROW
             const firstItem = grp[0];
-            const spoLabel = `${firstItem.spo} ${firstItem.style} ${firstItem.color} TOTAL`;
+            const spoLabel = `${firstItem.spo || ''} ${firstItem.style || ''} ${firstItem.color || ''} TOTAL`;
             grpHtml += `
               <tr style="background-color: #f8fafc;">
                 <td colspan="4" class="text-left text-blue-total">${spoLabel}</td>
-                <td class="text-right text-blue-total">${grpQty.toLocaleString()}</td>
+                <td class="text-right text-blue-total">${grpQty ? grpQty.toLocaleString() : ''}</td>
                 <td class="text-blue-total">PCE</td>
-                <td class="text-blue-total">${grpInHari || '-'}</td>
-                <td class="text-blue-total">${grpW0 || '-'}</td>
-                <td class="text-blue-total">${grpW1 || '-'}</td>
-                <td class="text-blue-total">${grpW2 || '-'}</td>
-                <td class="text-blue-total">${grpW3 || '-'}</td>
-                <td class="text-blue-total">${grpW4 || '-'}</td>
-                <td class="text-blue-total">${grpW5 || '-'}</td>
-                <td class="text-blue-total">${grpWipSew}</td>
-                <td class="text-blue-total">${grpOutSew || '-'}</td>
-                <td class="text-blue-total">${grpChk3d || '-'}</td>
-                <td class="text-blue-total">${grpWipFin}</td>
-                <td class="text-blue-total">${grpOutPack || '-'}</td>
-                <td class="text-blue-total">${grpIncum || '-'}</td>
-                <td class="text-blue-total">${grpOutcu || '-'}</td>
-                <td class="text-blue-total">${grpBlcOrder || '-'}</td>
+                <td class="text-blue-total">${grpInHari || ''}</td>
+                <td class="text-blue-total">${grpW0 || ''}</td>
+                <td class="text-blue-total">${grpW1 || ''}</td>
+                <td class="text-blue-total">${grpW2 || ''}</td>
+                <td class="text-blue-total">${grpW3 || ''}</td>
+                <td class="text-blue-total">${grpW4 || ''}</td>
+                <td class="text-blue-total">${grpW5 || ''}</td>
+                <td class="text-blue-total">${grpWipSew || ''}</td>
+                <td class="text-blue-total">${grpOutSew || ''}</td>
+                <td class="text-blue-total">${grpChk3d || ''}</td>
+                <td class="text-blue-total">${grpWipFin || ''}</td>
+                <td class="text-blue-total">${grpOutPack || ''}</td>
+                <td class="text-blue-total">${grpIncum || ''}</td>
+                <td class="text-blue-total">${grpOutcu || ''}</td>
+                <td class="text-blue-total">${grpBlcOrder || ''}</td>
               </tr>
             `;
           });
@@ -790,7 +790,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     </div>
 
                     {group.lines.map(([lineId, { itemsList, hasExplicitData }]) => {
-                      const mp = getLineManpower(lineId, targetDate);
+                      const mp = getLineManpower(lineId, targetDate, itemsList);
                       const dev = checkManpowerDeviation(mp);
 
                       const spoGroups: Record<string, typeof itemsList> = {};
@@ -840,28 +840,28 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                           <div className="overflow-x-auto">
                             <table className="w-full border-collapse text-[10px]">
                               <thead>
-                                <tr className="bg-slate-200 text-slate-900 font-bold text-center border-b border-slate-900">
-                                  <th className="border border-slate-900 p-1">SPO</th>
-                                  <th className="border border-slate-900 p-1">STYLE</th>
-                                  <th className="border border-slate-900 p-1">COLOR</th>
-                                  <th className="border border-slate-900 p-1">SIZE</th>
-                                  <th className="border border-slate-900 p-1">QTY ORDE</th>
-                                  <th className="border border-slate-900 p-1">UNIT</th>
-                                  <th className="border border-slate-900 p-1">IN HARI</th>
-                                  <th className="border border-slate-900 p-1">WIPO</th>
-                                  <th className="border border-slate-900 p-1">WIP1</th>
-                                  <th className="border border-slate-900 p-1">WIP2</th>
-                                  <th className="border border-slate-900 p-1">WIP3</th>
-                                  <th className="border border-slate-900 p-1">WIP4</th>
-                                  <th className="border border-slate-900 p-1">WIP5</th>
-                                  <th className="border border-slate-900 p-1">WIP SEWI</th>
-                                  <th className="border border-slate-900 p-1">OUTP</th>
-                                  <th className="border border-slate-900 p-1">CHK1</th>
-                                  <th className="border border-slate-900 p-1 bg-sky-100">WIP FINIS</th>
-                                  <th className="border border-slate-900 p-1">OUT PACK</th>
-                                  <th className="border border-slate-900 p-1">INCUM</th>
-                                  <th className="border border-slate-900 p-1">OUTCU</th>
-                                  <th className="border border-slate-900 p-1">BLC ORDER</th>
+                                <tr className="bg-slate-200 text-slate-900 font-bold text-center border-b border-slate-900 whitespace-nowrap">
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">SPO</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">STYLE</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">COLOR</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">SIZE</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">QTY ORDE</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">UNIT</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">IN HARI</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIPO</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP1</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP2</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP3</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP4</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP5</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">WIP SEWI</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">OUTP</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">CHK1</th>
+                                  <th className="border border-slate-900 p-1 bg-sky-100 whitespace-nowrap">WIP FINIS</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">OUT PACK</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">INCUM</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">OUTCU</th>
+                                  <th className="border border-slate-900 p-1 whitespace-nowrap">BLC ORDER</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -887,55 +887,55 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                                   const firstItem = grp[0];
 
                                   return (
-                                    <React.Fragment key={spoKey}>
+                                    <React.Fragment key={`spo-grp-${lineId}-${spoKey}-${firstItem?.color || ''}`}>
                                       {grp.map((item, idx) => (
-                                        <tr key={item.id || idx} className="text-center hover:bg-slate-50">
-                                          <td className="border border-slate-900 p-1 font-bold text-left">{item.spo}</td>
-                                          <td className="border border-slate-900 p-1 text-left truncate max-w-[120px]">{item.style}</td>
-                                          <td className="border border-slate-900 p-1 text-left truncate max-w-[80px]">{item.color}</td>
-                                          <td className="border border-slate-900 p-1 font-bold">{item.size}</td>
-                                          <td className="border border-slate-900 p-1 text-right">{item.qtyOrder?.toLocaleString() || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.unit || 'PCE'}</td>
-                                          <td className="border border-slate-900 p-1">{item.inHariIni || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip0 || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip1 || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip2 || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip3 || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip4 || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.wip5 || '-'}</td>
-                                          <td className="border border-slate-900 p-1 font-bold">{item.rowWipSewing || '0'}</td>
-                                          <td className="border border-slate-900 p-1">{item.outSewing || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.chk3d || '-'}</td>
-                                          <td className="border border-slate-900 p-1 bg-sky-50 font-bold">{item.wipFinish || '0'}</td>
-                                          <td className="border border-slate-900 p-1">{item.outPacking || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.incum || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.outcu || '-'}</td>
-                                          <td className="border border-slate-900 p-1">{item.blcOrder || '-'}</td>
+                                        <tr key={`pdf-item-${lineId}-${item.id || 'row'}-${idx}`} className="text-center hover:bg-slate-50 whitespace-nowrap">
+                                          <td className="border border-slate-900 p-1 font-bold text-left whitespace-nowrap">{item.spo || ''}</td>
+                                          <td className="border border-slate-900 p-1 text-left whitespace-nowrap truncate max-w-[120px]">{item.style || ''}</td>
+                                          <td className="border border-slate-900 p-1 text-left whitespace-nowrap truncate max-w-[80px]">{item.color || ''}</td>
+                                          <td className="border border-slate-900 p-1 font-bold whitespace-nowrap">{item.size || ''}</td>
+                                          <td className="border border-slate-900 p-1 text-right whitespace-nowrap">{item.qtyOrder ? item.qtyOrder.toLocaleString() : ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.unit || 'PCE'}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.inHariIni || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip0 || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip1 || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip2 || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip3 || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip4 || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.wip5 || ''}</td>
+                                          <td className="border border-slate-900 p-1 font-bold whitespace-nowrap">{item.rowWipSewing || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.outSewing || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.chk3d || ''}</td>
+                                          <td className="border border-slate-900 p-1 bg-sky-50 font-bold whitespace-nowrap">{item.wipFinish || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.outPacking || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.incum || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.outcu || ''}</td>
+                                          <td className="border border-slate-900 p-1 whitespace-nowrap">{item.blcOrder || ''}</td>
                                         </tr>
                                       ))}
 
                                       {/* SPO TOTAL ROW */}
-                                      <tr className="bg-slate-50 font-bold text-blue-700 border-t border-b border-slate-900">
-                                        <td colSpan={4} className="border border-slate-900 p-1 text-left uppercase text-blue-700">
-                                          {firstItem.spo} {firstItem.style} TOTAL
+                                      <tr className="bg-slate-50 font-bold text-blue-700 border-t border-b border-slate-900 whitespace-nowrap">
+                                        <td colSpan={4} className="border border-slate-900 p-1 text-left uppercase text-blue-700 whitespace-nowrap">
+                                          {firstItem.spo || ''} {firstItem.style || ''} {firstItem.color || ''} TOTAL
                                         </td>
-                                        <td className="border border-slate-900 p-1 text-right text-blue-700">{grpQty.toLocaleString()}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">PCE</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpInHari || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW0 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW1 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW2 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW3 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW4 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW5 || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpWipSew}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutSew || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpChk3d || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpWipFin}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutPack || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpIncum || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutcu || '-'}</td>
-                                        <td className="border border-slate-900 p-1 text-blue-700">{grpBlcOrder || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-right text-blue-700 whitespace-nowrap">{grpQty ? grpQty.toLocaleString() : ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">PCE</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpInHari || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW0 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW1 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW2 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW3 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW4 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpW5 || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpWipSew || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpOutSew || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpChk3d || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpWipFin || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpOutPack || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpIncum || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpOutcu || ''}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700 whitespace-nowrap">{grpBlcOrder || ''}</td>
                                       </tr>
                                     </React.Fragment>
                                   );
@@ -943,7 +943,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
                                 {/* 10 BARIS KOSONG PER LINE UNTUK MANUALLING */}
                                 {Array.from({ length: 10 }).map((_, emptyIdx) => (
-                                  <tr key={`empty-${emptyIdx}`} className="text-center h-5 border-b border-slate-300">
+                                  <tr key={`empty-row-${lineId}-${emptyIdx}`} className="text-center h-5 border-b border-slate-300">
                                     <td className="border border-slate-900 p-1 font-bold text-slate-400 text-left">{emptyIdx + 1}</td>
                                     <td className="border border-slate-900 p-1">&nbsp;</td>
                                     <td className="border border-slate-900 p-1">&nbsp;</td>

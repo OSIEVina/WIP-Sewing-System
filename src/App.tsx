@@ -14,7 +14,7 @@ import {
 } from './lib/googleSheetsService';
 import { safeGetItem, safeSetItem, safeRemoveItem } from './utils/storage';
 import { normalizeDateStr, getTodayDateStr } from './utils/date';
-import { saveLineManpower, getLineManpower } from './utils/manpower';
+import { saveLineManpower, getLineManpower, syncManpowerFromWipItems } from './utils/manpower';
 import { Header } from './components/Header';
 import { LineGrid } from './components/LineGrid';
 import { LoginLeaderModal } from './components/LoginLeaderModal';
@@ -242,6 +242,7 @@ export default function App() {
         if (remoteWip !== null && Array.isArray(remoteWip)) {
           const merged = mergeLocalAndRemoteData(currentLocal, remoteWip);
           setWipItems(merged);
+          syncManpowerFromWipItems(merged);
           safeSetItem('wip_sewing_items', JSON.stringify(merged));
           safeSetItem('google_sheets_imported', 'true');
           broadcastCrossTabUpdate();
@@ -252,6 +253,7 @@ export default function App() {
       if (csvWip !== null && Array.isArray(csvWip)) {
         const merged = mergeLocalAndRemoteData(currentLocal, csvWip);
         setWipItems(merged);
+        syncManpowerFromWipItems(merged);
         safeSetItem('wip_sewing_items', JSON.stringify(merged));
         safeSetItem('google_sheets_imported', 'true');
         broadcastCrossTabUpdate();
@@ -383,6 +385,7 @@ export default function App() {
       try {
         const fetchedWip = await fetchWebAppWipData(webAppUrl);
         if (fetchedWip !== null && Array.isArray(fetchedWip) && fetchedWip.length > 0) {
+          syncManpowerFromWipItems(fetchedWip);
           setWipItems((current) => {
             const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
             const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');

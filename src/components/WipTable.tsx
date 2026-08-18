@@ -530,7 +530,7 @@ export const WipTable: React.FC<WipTableProps> = ({
     ];
 
     const mpRows = lineDatePairs.map(({ lineId, date }) => {
-      const mp = getLineManpower(lineId, date);
+      const mp = getLineManpower(lineId, date, items);
       const dev = checkManpowerDeviation(mp);
       return [
         `LINE ${lineId.toUpperCase()}`,
@@ -713,11 +713,11 @@ export const WipTable: React.FC<WipTableProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-200 font-mono text-xs">
               {(() => {
-                const allMpMap = getAllLineManpower();
+                const allMpMap = getAllLineManpower(items);
                 return lineDatePairs.map(({ lineId, date }, pairIdx) => {
                   const key = `${cleanLine(lineId)}_${date}`;
                   const hasMp = !!allMpMap[key];
-                  const mp = getLineManpower(lineId, date);
+                  const mp = getLineManpower(lineId, date, items);
                   const devInfo = checkManpowerDeviation(mp);
 
                   return (

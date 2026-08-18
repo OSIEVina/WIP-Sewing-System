@@ -6,51 +6,198 @@ const STORAGE_KEY = 'wip_sewing_line_manpower';
 
 const cleanLineId = (id: string) => (id ? id.trim().toUpperCase() : '');
 
-export function getAllLineManpower(): Record<string, LineManpower> {
+export function getAllLineManpower(wipItems?: WipItem[]): Record<string, LineManpower> {
+  let all: Record<string, LineManpower> = {};
   try {
     const saved = safeGetItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
+    all = saved ? JSON.parse(saved) : {};
   } catch (err) {
     console.error('Failed to parse line manpower data:', err);
-    return {};
+    all = {};
+  }
+
+  // If wipItems provided or available in storage, ensure all entries are synchronized from spreadsheet data
+  let itemsToSearch = wipItems;
+  if (!itemsToSearch || !Array.isArray(itemsToSearch)) {
+    try {
+      const savedItems = safeGetItem('wip_sewing_items');
+      if (savedItems) {
+        itemsToSearch = JSON.parse(savedItems);
+      }
+    } catch {}
+  }
+
+  if (itemsToSearch && Array.isArray(itemsToSearch) && itemsToSearch.length > 0) {
+    const getItemDate = (i: WipItem) =>
+      normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+    itemsToSearch.forEach((item) => {
+      if (!item.lineId) return;
+      const cleanLine = cleanLineId(item.lineId);
+      const normDate = getItemDate(item);
+      if (!normDate) return;
+      const key = `${cleanLine}_${normDate}`;
+
+      const itemTimestamp = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      const existing = all[key];
+      const existingTimestamp = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+
+      const hasMpValues =
+        (item.normalHours !== undefined && item.normalHours > 0) ||
+        (item.normalMp !== undefined && item.normalMp > 0) ||
+        (item.overtimeHours !== undefined && item.overtimeHours > 0) ||
+        (item.overtimeMp !== undefined && item.overtimeMp > 0);
+
+      if (hasMpValues && (!existing || itemTimestamp >= existingTimestamp)) {
+        all[key] = {
+          lineId: cleanLine,
+          date: normDate,
+          normalHours: item.normalHours !== undefined ? Number(item.normalHours) : (existing?.normalHours ?? 7),
+          normalMp: item.normalMp !== undefined ? Number(item.normalMp) : (existing?.normalMp ?? 25),
+          overtimeHours: item.overtimeHours !== undefined ? Number(item.overtimeHours) : (existing?.overtimeHours ?? 0),
+          overtimeMp: item.overtimeMp !== undefined ? Number(item.overtimeMp) : (existing?.overtimeMp ?? 0),
+          updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+        };
+      }
+    });
+  }
+
+  return all;
+}
+
+export function syncManpowerFromWipItems(items: WipItem[]): void {
+  if (!items || !Array.isArray(items) || items.length === 0) return;
+  const all = getAllLineManpower();
+  let changed = false;
+
+  const getItemDate = (i: WipItem) =>
+    normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+  // Group items by Line + Date
+  const groupMap = new Map<string, WipItem[]>();
+  items.forEach((item) => {
+    if (!item.lineId) return;
+    const cleanLine = cleanLineId(item.lineId);
+    const normDate = getItemDate(item);
+    if (!normDate) return;
+    const key = `${cleanLine}_${normDate}`;
+    const list = groupMap.get(key) || [];
+    list.push(item);
+    groupMap.set(key, list);
+  });
+
+  groupMap.forEach((lineItems, key) => {
+    const sorted = [...lineItems].sort(
+      (a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+    );
+
+    const latestWithMp = sorted.find(
+      (i) =>
+        (i.normalHours !== undefined && i.normalHours > 0) ||
+        (i.normalMp !== undefined && i.normalMp > 0) ||
+        (i.overtimeHours !== undefined && i.overtimeHours > 0) ||
+        (i.overtimeMp !== undefined && i.overtimeMp > 0)
+    ) || sorted[0];
+
+    if (
+      latestWithMp &&
+      (latestWithMp.normalHours !== undefined ||
+        latestWithMp.normalMp !== undefined ||
+        latestWithMp.overtimeHours !== undefined ||
+        latestWithMp.overtimeMp !== undefined)
+    ) {
+      const [cleanLine, normDate] = key.split('_');
+      const itemTimestamp = new Date(latestWithMp.updatedAt || latestWithMp.createdAt || 0).getTime();
+      const existing = all[key];
+      const existingTimestamp = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+
+      if (!existing || itemTimestamp >= existingTimestamp || (latestWithMp.normalHours && !existing.normalHours)) {
+        all[key] = {
+          lineId: cleanLine,
+          date: normDate,
+          normalHours: latestWithMp.normalHours !== undefined ? Number(latestWithMp.normalHours) : (existing?.normalHours ?? 7),
+          normalMp: latestWithMp.normalMp !== undefined ? Number(latestWithMp.normalMp) : (existing?.normalMp ?? 25),
+          overtimeHours: latestWithMp.overtimeHours !== undefined ? Number(latestWithMp.overtimeHours) : (existing?.overtimeHours ?? 0),
+          overtimeMp: latestWithMp.overtimeMp !== undefined ? Number(latestWithMp.overtimeMp) : (existing?.overtimeMp ?? 0),
+          updatedAt: latestWithMp.updatedAt || latestWithMp.createdAt || new Date().toISOString(),
+        };
+        changed = true;
+      }
+    }
+  });
+
+  if (changed) {
+    safeSetItem(STORAGE_KEY, JSON.stringify(all));
   }
 }
 
 export function getLineManpower(lineId: string, date: string, wipItems?: WipItem[]): LineManpower {
   const normDate = normalizeDateStr(date);
   const cleanLine = cleanLineId(lineId);
-  const all = getAllLineManpower();
+  const all = getAllLineManpower(wipItems);
   const key = `${cleanLine}_${normDate}`;
-  
-  if (all[key]) {
-    return all[key];
+  const localCached = all[key];
+
+  // Resolve items: from parameter, or from localStorage synced items
+  let itemsToSearch = wipItems;
+  if (!itemsToSearch || !Array.isArray(itemsToSearch)) {
+    try {
+      const savedItems = safeGetItem('wip_sewing_items');
+      if (savedItems) {
+        itemsToSearch = JSON.parse(savedItems);
+      }
+    } catch {}
   }
 
-  // Fallback: check if any WIP item on this Line & Date already has manpower filled
-  if (wipItems && Array.isArray(wipItems)) {
+  if (itemsToSearch && Array.isArray(itemsToSearch) && itemsToSearch.length > 0) {
     const getItemDate = (i: WipItem) =>
       normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
 
-    const found = wipItems.find(
-      (item) =>
-        cleanLineId(item.lineId) === cleanLine &&
-        getItemDate(item) === normDate &&
-        (item.normalHours !== undefined || item.normalMp !== undefined || item.overtimeHours !== undefined || item.overtimeMp !== undefined)
-    );
+    const matching = itemsToSearch
+      .filter((item) => cleanLineId(item.lineId) === cleanLine && getItemDate(item) === normDate)
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt || 0).getTime() -
+          new Date(a.updatedAt || a.createdAt || 0).getTime()
+      );
 
-    if (found) {
-      const fromItem: LineManpower = {
-        lineId: cleanLine,
-        date: normDate,
-        normalHours: found.normalHours !== undefined ? found.normalHours : 7,
-        normalMp: found.normalMp !== undefined ? found.normalMp : 25,
-        overtimeHours: found.overtimeHours !== undefined ? found.overtimeHours : 0,
-        overtimeMp: found.overtimeMp !== undefined ? found.overtimeMp : 0,
-      };
-      // Save it so future calls are instantaneous
-      saveLineManpower(fromItem);
-      return fromItem;
+    const found = matching.find(
+      (item) =>
+        (item.normalHours !== undefined && item.normalHours > 0) ||
+        (item.normalMp !== undefined && item.normalMp > 0) ||
+        (item.overtimeHours !== undefined && item.overtimeHours > 0) ||
+        (item.overtimeMp !== undefined && item.overtimeMp > 0)
+    ) || matching[0];
+
+    if (
+      found &&
+      (found.normalHours !== undefined ||
+        found.normalMp !== undefined ||
+        found.overtimeHours !== undefined ||
+        found.overtimeMp !== undefined)
+    ) {
+      const itemTimestamp = new Date(found.updatedAt || found.createdAt || 0).getTime();
+      const localTimestamp = localCached?.updatedAt ? new Date(localCached.updatedAt).getTime() : 0;
+
+      // If remote item timestamp is newer or equal, or local cache was empty/default, use spreadsheet item!
+      if (itemTimestamp >= localTimestamp || !localCached) {
+        const fromItem: LineManpower = {
+          lineId: cleanLine,
+          date: normDate,
+          normalHours: found.normalHours !== undefined ? Number(found.normalHours) : (localCached?.normalHours ?? 7),
+          normalMp: found.normalMp !== undefined ? Number(found.normalMp) : (localCached?.normalMp ?? 25),
+          overtimeHours: found.overtimeHours !== undefined ? Number(found.overtimeHours) : (localCached?.overtimeHours ?? 0),
+          overtimeMp: found.overtimeMp !== undefined ? Number(found.overtimeMp) : (localCached?.overtimeMp ?? 0),
+          updatedAt: found.updatedAt || found.createdAt || new Date().toISOString(),
+        };
+        saveLineManpower(fromItem);
+        return fromItem;
+      }
     }
+  }
+
+  if (localCached) {
+    return localCached;
   }
 
   return {
@@ -72,7 +219,7 @@ export function saveLineManpower(data: LineManpower): void {
     ...data,
     lineId: cleanLine,
     date: normDate,
-    updatedAt: new Date().toISOString(),
+    updatedAt: data.updatedAt || new Date().toISOString(),
   };
   safeSetItem(STORAGE_KEY, JSON.stringify(all));
 }
