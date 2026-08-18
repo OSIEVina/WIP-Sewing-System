@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { WipItem, ChkItem } from '../types';
 import { getLineManpower, checkManpowerDeviation } from '../utils/manpower';
 import { normalizeDateStr, getTodayDateStr } from '../utils/date';
-import { X, FileText, Download, Calendar, Printer, Layers } from 'lucide-react';
+import { X, FileText, Download, Calendar, Printer, Layers, Building2 } from 'lucide-react';
 
 interface PdfExportModalProps {
   isOpen: boolean;
@@ -65,6 +65,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   const [targetDate, setTargetDate] = useState<string>(
     globalReportDate || availableDates[0] || todayStr
   );
+  const [selectedBuilding, setSelectedBuilding] = useState<'ALL' | 'AB' | 'CD'>('ALL');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -72,7 +73,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
   const normTargetDate = normalizeDateStr(targetDate);
 
-  // Synchronize with external global report date if changed
   const handleDateChange = (newDate: string) => {
     setTargetDate(newDate);
     if (setGlobalReportDate) {
@@ -80,7 +80,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   };
 
-  // Helper to compute row WIP sewing
   const getItemWipSewing = (item: WipItem): number => {
     const stationSum =
       (item.wip0 || 0) +
@@ -96,37 +95,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     return 0;
   };
 
-  // Helper to get CHK10 inspection value for an item
-  const getChk10Value = (item: WipItem): number => {
-    if (item.chk3d !== undefined && item.chk3d !== null && item.chk3d > 0) {
-      return item.chk3d;
-    }
-    const cleanSpoStr = (item.spo || '').trim().toUpperCase();
-    const cleanSizeStr = (item.size || '').trim().toUpperCase();
-    const cleanLineStr = (item.lineId || 'A01').trim().toUpperCase();
-    const itemDate = normalizeDateStr(
-      item.date || (item.createdAt ? item.createdAt.split('T')[0] : '')
-    );
-
-    if (chkItems && chkItems.length > 0) {
-      const dateMatches = chkItems.filter((c) => {
-        const cLine = (c.line || 'A01').trim().toUpperCase();
-        const cSpo = (c.spo || '').trim().toUpperCase();
-        const cSize = (c.size || '').trim().toUpperCase();
-        const cDate = normalizeDateStr(
-          c.date || (c.createdAt ? c.createdAt.split('T')[0] : '')
-        );
-        const lineMatch = !cleanLineStr || !cLine || cLine === cleanLineStr;
-        return lineMatch && cSpo === cleanSpoStr && cSize === cleanSizeStr && (!itemDate || !cDate || cDate === itemDate);
-      });
-
-      const dateSum = dateMatches.reduce((sum, c) => sum + (c.output || 0), 0);
-      if (dateSum > 0) return dateSum;
-    }
-
-    return 0;
-  };
-
   // 1. Determine all unique line IDs across the system
   const allLineIds = Array.from(
     new Set(items.map((i) => (i.lineId || 'A01').trim().toUpperCase()))
@@ -135,9 +103,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     allLineIds.push('A01');
   }
 
-  // 2. Process items for targetDate.
-  // If a date has NEVER been filled, carry over previous data from yesterday
-  // BUT ONLY retain WIP Sewing and WIP Finishing (reset daily Scan In, Breakdown WIP0..5, Out Sewing, Out Packing, CHK10 to 0)
+  // Process items for targetDate
   const processedLineMap = new Map<
     string,
     {
@@ -146,8 +112,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         outcu: number;
         blcOrder: number;
         rowWipSewing: number;
-        rowCheck: number;
-        rowCheckChk: number;
       })[];
       hasExplicitData: boolean;
     }
@@ -165,7 +129,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
     const hasExplicitData = explicitOnTarget.length > 0;
 
-    // Get all unique SPO + Color + Size combinations for this line
     const uniqueKeys = new Set<string>();
     lineItems.forEach((i) => {
       uniqueKeys.add(`${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}`);
@@ -176,8 +139,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       outcu: number;
       blcOrder: number;
       rowWipSewing: number;
-      rowCheck: number;
-      rowCheckChk: number;
     })[] = [];
 
     uniqueKeys.forEach((key) => {
@@ -185,7 +146,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         (i) => `${(i.spo || '').trim().toUpperCase()}|${(i.color || '').trim().toUpperCase()}|${(i.size || '').trim().toUpperCase()}` === key
       );
 
-      // Cumulative calculations up to targetDate
       const allPriorAndCurrent = lineItems.filter((i) => {
         const d = normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
         return (
@@ -200,13 +160,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
       if (explicit) {
         const rowWipSewing = getItemWipSewing(explicit);
-        const wipStationSum = (explicit.wip0 || 0) + (explicit.wip1 || 0) + (explicit.wip2 || 0) + (explicit.wip3 || 0) + (explicit.wip4 || 0) + (explicit.wip5 || 0);
-        const rowCheck = rowWipSewing - wipStationSum;
-
-        const chkVal = getChk10Value(explicit);
-        const outS = explicit.outSewing || 0;
-        const rowCheckChk = chkVal - outS;
-
         const blcOrder = Math.max(0, (explicit.qtyOrder || 0) - accumOutPacking);
 
         computedItems.push({
@@ -215,11 +168,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           outcu: accumOutPacking || accumOutSewing,
           blcOrder,
           rowWipSewing,
-          rowCheck,
-          rowCheckChk,
         });
       } else {
-        // Carryover from prior date ("hari kemarin")
         const priorItems = lineItems.filter((i) => {
           const d = normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
           return (
@@ -257,8 +207,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             outcu: number;
             blcOrder: number;
             rowWipSewing: number;
-            rowCheck: number;
-            rowCheckChk: number;
           } = {
             id: `proj-${lineId}-${latestPrior.spo}-${latestPrior.size}-${normTargetDate}`,
             lineId,
@@ -287,8 +235,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             outcu: pastOutPacking || pastOutSewing,
             blcOrder,
             rowWipSewing: carryWipSewing,
-            rowCheck: carryWipSewing,
-            rowCheckChk: 0,
           };
 
           computedItems.push(projectedItem);
@@ -304,9 +250,23 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   });
 
-  const linesToRender = Array.from(processedLineMap.entries());
+  const allLinesToRender = Array.from(processedLineMap.entries());
 
-  // Function to build HTML string for window.print() matching image.png exactly
+  // Building classification helpers
+  const isGedungAB = (lineId: string) => {
+    const clean = lineId.replace(/line\s*/i, '').trim().toUpperCase();
+    return clean.startsWith('A') || clean.startsWith('B');
+  };
+
+  const isGedungCD = (lineId: string) => {
+    const clean = lineId.replace(/line\s*/i, '').trim().toUpperCase();
+    return clean.startsWith('C') || clean.startsWith('D');
+  };
+
+  const abLines = allLinesToRender.filter(([lineId]) => isGedungAB(lineId));
+  const cdLines = allLinesToRender.filter(([lineId]) => isGedungCD(lineId));
+  const otherLines = allLinesToRender.filter(([lineId]) => !isGedungAB(lineId) && !isGedungCD(lineId));
+
   const handleDownloadPdf = () => {
     setIsGenerating(true);
     try {
@@ -327,15 +287,14 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           <style>
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
             body { font-family: 'Arial Narrow', Arial, sans-serif; font-size: 10px; color: #000; margin: 10px; background: #fff; }
+            .building-header-banner { background-color: #1e293b !important; color: #ffffff !important; font-size: 14px; font-weight: 900; padding: 6px 12px; margin-top: 20px; margin-bottom: 12px; border: 1.5px solid #000; text-transform: uppercase; letter-spacing: 1px; font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: space-between; }
             .line-container { margin-bottom: 25px; page-break-inside: avoid; border: 1px solid #000; }
             .line-header-banner { background-color: #ffff00 !important; color: #000 !important; font-size: 13px; font-weight: 900; padding: 4px 8px; border-bottom: 1px solid #000; font-family: Arial, sans-serif; text-transform: uppercase; }
             .periode-subtitle { font-size: 10px; font-weight: bold; margin-bottom: 2px; padding: 2px 8px; font-family: Arial, sans-serif; border-bottom: 1px solid #000; background-color: #ffffff; }
             table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: monospace; }
             th, td { border: 1px solid #000; padding: 3px 4px; text-align: center; }
             th { background-color: #e2e8f0 !important; font-weight: bold; font-family: Arial, sans-serif; font-size: 9px; }
-            th.th-check { background-color: #dc2626 !important; color: #ffffff !important; font-weight: 900; }
             th.th-wip-finish { background-color: #dbeafe !important; }
-            .bg-check-cell { background-color: #fee2e2 !important; color: #991b1b; }
             .bg-wip-finish-cell { background-color: #eff6ff !important; }
             .text-left { text-align: left; }
             .text-right { text-align: right; }
@@ -346,6 +305,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             .card-box { border: 1px solid #94a3b8; padding: 4px; background: #ffffff !important; }
             .card-yellow { background-color: #ffff00 !important; font-weight: bold; border: 1px solid #ca8a04; }
             .card-purple { background-color: #e9d5ff !important; font-weight: bold; border: 1px solid #a855f7; }
+            .page-break { page-break-before: always !important; break-before: page !important; }
             @media print {
               body { margin: 0; }
               @page { size: landscape; margin: 8mm; }
@@ -355,14 +315,12 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         <body>
       `;
 
-      if (linesToRender.length === 0) {
-        htmlContent += `<div style="text-align: center; padding: 40px; color: #666;">Tidak ada data WIP untuk tanggal ${targetDate}.</div>`;
-      } else {
-        linesToRender.forEach(([lineId, { itemsList, hasExplicitData }]) => {
+      const generateLinesHtml = (linesGroup: typeof allLinesToRender) => {
+        let grpHtml = '';
+        linesGroup.forEach(([lineId, { itemsList, hasExplicitData }]) => {
           const mp = getLineManpower(lineId, targetDate);
           const dev = checkManpowerDeviation(mp);
 
-          // Group itemsList by SPO
           const spoGroups: Record<string, typeof itemsList> = {};
           itemsList.forEach((item) => {
             const key = item.spo || '-';
@@ -370,7 +328,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             spoGroups[key].push(item);
           });
 
-          // Sort size inside each SPO group
           Object.keys(spoGroups).forEach((k) => {
             spoGroups[k].sort((a, b) => compareSizes(a.size, b.size));
           });
@@ -385,8 +342,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           const totalWip5 = itemsList.reduce((s, i) => s + (i.wip5 || 0), 0);
           const totalWipSewing = itemsList.reduce((s, i) => s + i.rowWipSewing, 0);
           const totalOutSewing = itemsList.reduce((s, i) => s + (i.outSewing || 0), 0);
-          const totalCheck = itemsList.reduce((s, i) => s + i.rowCheck, 0);
-          const totalCheckChk = itemsList.reduce((s, i) => s + i.rowCheckChk, 0);
           const totalChk3d = itemsList.reduce((s, i) => s + (i.chk3d || 0), 0);
           const totalWipFinish = itemsList.reduce((s, i) => s + (i.wipFinish || 0), 0);
           const totalOutPacking = itemsList.reduce((s, i) => s + (i.outPacking || 0), 0);
@@ -394,7 +349,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           const totalOutcu = itemsList.reduce((s, i) => s + i.outcu, 0);
           const totalBlcOrder = itemsList.reduce((s, i) => s + i.blcOrder, 0);
 
-          htmlContent += `
+          grpHtml += `
             <div class="line-container">
               <div class="line-header-banner">
                 WIP LINE ${lineId.toUpperCase()}
@@ -424,10 +379,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     <th>WIP4</th>
                     <th>WIP5</th>
                     <th>WIP SEWI</th>
-                    <th class="th-check">CHEC</th>
                     <th>OUTP</th>
                     <th>CHK1</th>
-                    <th class="th-check">CHEC CHK</th>
                     <th class="th-wip-finish">WIP FINIS</th>
                     <th>OUT PACK</th>
                     <th>INCUM</th>
@@ -450,8 +403,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             const grpW5 = grp.reduce((s, i) => s + (i.wip5 || 0), 0);
             const grpWipSew = grp.reduce((s, i) => s + i.rowWipSewing, 0);
             const grpOutSew = grp.reduce((s, i) => s + (i.outSewing || 0), 0);
-            const grpCheck = grp.reduce((s, i) => s + i.rowCheck, 0);
-            const grpCheckChk = grp.reduce((s, i) => s + i.rowCheckChk, 0);
             const grpChk3d = grp.reduce((s, i) => s + (i.chk3d || 0), 0);
             const grpWipFin = grp.reduce((s, i) => s + (i.wipFinish || 0), 0);
             const grpOutPack = grp.reduce((s, i) => s + (i.outPacking || 0), 0);
@@ -460,7 +411,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             const grpBlcOrder = grp.reduce((s, i) => s + i.blcOrder, 0);
 
             grp.forEach((item) => {
-              htmlContent += `
+              grpHtml += `
                 <tr>
                   <td class="font-bold text-left">${item.spo}</td>
                   <td class="text-left">${item.style}</td>
@@ -476,14 +427,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                   <td>${item.wip4 || '-'}</td>
                   <td>${item.wip5 || '-'}</td>
                   <td class="font-bold">${item.rowWipSewing || '0'}</td>
-                  <td class="bg-check-cell font-bold">${
-                    item.rowCheck === 0 ? '-' : item.rowCheck > 0 ? `+${item.rowCheck}` : item.rowCheck
-                  }</td>
                   <td>${item.outSewing || '-'}</td>
                   <td>${item.chk3d || '-'}</td>
-                  <td class="bg-check-cell font-bold">${
-                    item.rowCheckChk === 0 ? '-' : item.rowCheckChk > 0 ? `+${item.rowCheckChk}` : item.rowCheckChk
-                  }</td>
                   <td class="bg-wip-finish-cell font-bold">${item.wipFinish || '0'}</td>
                   <td>${item.outPacking || '-'}</td>
                   <td>${item.incum || '-'}</td>
@@ -493,10 +438,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               `;
             });
 
-            // SPO TOTAL ROW in BOLD BLUE as in image.png
+            // SPO TOTAL ROW
             const firstItem = grp[0];
             const spoLabel = `${firstItem.spo} ${firstItem.style} ${firstItem.color} TOTAL`;
-            htmlContent += `
+            grpHtml += `
               <tr style="background-color: #f8fafc;">
                 <td colspan="4" class="text-left text-blue-total">${spoLabel}</td>
                 <td class="text-right text-blue-total">${grpQty.toLocaleString()}</td>
@@ -509,10 +454,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 <td class="text-blue-total">${grpW4 || '-'}</td>
                 <td class="text-blue-total">${grpW5 || '-'}</td>
                 <td class="text-blue-total">${grpWipSew}</td>
-                <td class="text-blue-total">${grpCheck === 0 ? '-' : grpCheck}</td>
                 <td class="text-blue-total">${grpOutSew || '-'}</td>
                 <td class="text-blue-total">${grpChk3d || '-'}</td>
-                <td class="text-blue-total">${grpCheckChk === 0 ? '-' : grpCheckChk}</td>
                 <td class="text-blue-total">${grpWipFin}</td>
                 <td class="text-blue-total">${grpOutPack || '-'}</td>
                 <td class="text-blue-total">${grpIncum || '-'}</td>
@@ -522,8 +465,37 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             `;
           });
 
+          // 10 BARIS KOSONG DI SETIAP LINE
+          Array.from({ length: 10 }).forEach((_, idx) => {
+            grpHtml += `
+              <tr style="height: 22px;">
+                <td class="text-left font-bold" style="color: #94a3b8;">${idx + 1}</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+                <td style="height: 22px;">&nbsp;</td>
+              </tr>
+            `;
+          });
+
           // LINE GRAND TOTAL ROW
-          htmlContent += `
+          grpHtml += `
                   <tr style="background-color: #e2e8f0; font-weight: 900;">
                     <td colspan="4" class="text-right font-black">TOTAL:</td>
                     <td class="text-right font-black">${totalQty.toLocaleString()}</td>
@@ -536,10 +508,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     <td class="font-black">${totalWip4}</td>
                     <td class="font-black">${totalWip5}</td>
                     <td class="font-black">${totalWipSewing}</td>
-                    <td class="font-black">${totalCheck === 0 ? '0' : totalCheck}</td>
                     <td class="font-black">${totalOutSewing}</td>
                     <td class="font-black">${totalChk3d}</td>
-                    <td class="font-black">${totalCheckChk === 0 ? '0' : totalCheckChk}</td>
                     <td class="font-black">${totalWipFinish}</td>
                     <td class="font-black">${totalOutPacking}</td>
                     <td class="font-black">${totalIncum}</td>
@@ -575,6 +545,34 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             </div>
           `;
         });
+        return grpHtml;
+      };
+
+      if (allLinesToRender.length === 0) {
+        htmlContent += `<div style="text-align: center; padding: 40px; color: #666;">Tidak ada data WIP untuk tanggal ${targetDate}.</div>`;
+      } else {
+        if (selectedBuilding === 'ALL' || selectedBuilding === 'AB') {
+          if (abLines.length > 0) {
+            htmlContent += `<div class="building-header-banner">🏢 LAPORAN WIP - GEDUNG A & B</div>`;
+            htmlContent += generateLinesHtml(abLines);
+          }
+        }
+
+        if (selectedBuilding === 'ALL' && abLines.length > 0 && cdLines.length > 0) {
+          htmlContent += `<div class="page-break"></div>`;
+        }
+
+        if (selectedBuilding === 'ALL' || selectedBuilding === 'CD') {
+          if (cdLines.length > 0) {
+            htmlContent += `<div class="building-header-banner">🏢 LAPORAN WIP - GEDUNG C & D</div>`;
+            htmlContent += generateLinesHtml(cdLines);
+          }
+        }
+
+        if (otherLines.length > 0 && selectedBuilding === 'ALL') {
+          htmlContent += `<div class="building-header-banner">🏢 LAPORAN WIP - LINE LAINNYA</div>`;
+          htmlContent += generateLinesHtml(otherLines);
+        }
       }
 
       htmlContent += `
@@ -600,6 +598,18 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   };
 
+  // Determine lines to render in UI preview
+  const previewLinesGroup =
+    selectedBuilding === 'AB'
+      ? [{ title: 'GEDUNG A & B', lines: abLines }]
+      : selectedBuilding === 'CD'
+      ? [{ title: 'GEDUNG C & D', lines: cdLines }]
+      : [
+          { title: 'GEDUNG A & B', lines: abLines },
+          { title: 'GEDUNG C & D', lines: cdLines },
+          { title: 'LINE LAINNYA', lines: otherLines },
+        ].filter((g) => g.lines.length > 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden">
@@ -614,7 +624,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 Export Laporan WIP (Format Excel / PDF)
               </h2>
               <p className="text-xs text-slate-400">
-                Pilih tanggal laporan secara bebas. Jika belum ada data, otomatis carryover dari data kemarin (Hanya WIP Sewing & WIP Finishing).
+                Pilih tanggal & filter Gedung (AB / CD). Kolom CHECK disembunyikan & ditambah 10 baris kosong per line untuk catatan manual.
               </p>
             </div>
           </div>
@@ -626,24 +636,53 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           </button>
         </div>
 
-        {/* Date Selector & Controls Bar */}
-        <div className="p-5 bg-slate-100 border-b border-slate-200 space-y-3 shrink-0">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
-              <div>
-                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
-                  Pilih Tanggal Laporan
-                </label>
-                <p className="text-[11px] text-slate-500">
-                  Tanggal bebas pilihan Anda (Pick Any Date)
-                </p>
-              </div>
+        {/* Date & Building Selector Controls Bar */}
+        <div className="p-5 bg-slate-100 border-b border-slate-200 space-y-4 shrink-0">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            {/* Building Selection Tabs */}
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-300 shadow-xs">
+              <span className="text-xs font-bold text-slate-500 px-2 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-slate-600" />
+                Gedung:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedBuilding('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  selectedBuilding === 'ALL'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                🏢 Semua Gedung ({allLinesToRender.length} Line)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedBuilding('AB')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  selectedBuilding === 'AB'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                🏭 Gedung AB ({abLines.length} Line)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedBuilding('CD')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  selectedBuilding === 'CD'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                🏭 Gedung CD ({cdLines.length} Line)
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-              {/* Date Input for Free Selection */}
-              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-300 shadow-sm">
+            {/* Date Selection Controls */}
+            <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-300 shadow-xs">
                 <span className="text-xs font-bold text-slate-600">Pilih Tanggal:</span>
                 <input
                   type="date"
@@ -653,11 +692,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 />
               </div>
 
-              {/* Quick Select Dropdown from Available Recorded Dates */}
               <select
                 value={targetDate}
                 onChange={(e) => handleDateChange(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
               >
                 <option value={targetDate}>
                   📅 Terpilih: {targetDate} {targetDate === todayStr ? '(Hari Ini)' : ''}
@@ -669,7 +707,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 ))}
               </select>
 
-              {/* Quick Today Button */}
               <button
                 type="button"
                 onClick={() => handleDateChange(todayStr)}
@@ -691,7 +728,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Printer className="w-4 h-4 text-slate-600" />
-                Preview Tampilan Laporan (Sesuai Layout Format Excel)
+                Preview Tampilan Laporan (Tanpa Kolom Check + 10 Baris Kosong)
               </span>
               <span className="font-mono bg-yellow-100 text-yellow-900 px-2.5 py-1 rounded border border-yellow-300">
                 TANGGAL: {formatDateIndo(targetDate)}
@@ -703,232 +740,255 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
               className="printable-report p-4 space-y-8 min-w-[1050px] font-mono text-xs border border-slate-300 rounded-lg"
             >
-              {linesToRender.length === 0 ? (
+              {allLinesToRender.length === 0 ? (
                 <div className="p-12 text-center text-slate-400 font-mono">
                   Tidak ada data WIP untuk tanggal {targetDate}.
                 </div>
               ) : (
-                linesToRender.map(([lineId, { itemsList, hasExplicitData }]) => {
-                  const mp = getLineManpower(lineId, targetDate);
-                  const dev = checkManpowerDeviation(mp);
-
-                  // Group itemsList by SPO
-                  const spoGroups: Record<string, typeof itemsList> = {};
-                  itemsList.forEach((item) => {
-                    const key = item.spo || '-';
-                    if (!spoGroups[key]) spoGroups[key] = [];
-                    spoGroups[key].push(item);
-                  });
-
-                  // Sort sizes inside each SPO group
-                  Object.keys(spoGroups).forEach((k) => {
-                    spoGroups[k].sort((a, b) => compareSizes(a.size, b.size));
-                  });
-
-                  const totalQty = itemsList.reduce((s, i) => s + (i.qtyOrder || 0), 0);
-                  const totalInHariIni = itemsList.reduce((s, i) => s + (i.inHariIni || 0), 0);
-                  const totalWip0 = itemsList.reduce((s, i) => s + (i.wip0 || 0), 0);
-                  const totalWip1 = itemsList.reduce((s, i) => s + (i.wip1 || 0), 0);
-                  const totalWip2 = itemsList.reduce((s, i) => s + (i.wip2 || 0), 0);
-                  const totalWip3 = itemsList.reduce((s, i) => s + (i.wip3 || 0), 0);
-                  const totalWip4 = itemsList.reduce((s, i) => s + (i.wip4 || 0), 0);
-                  const totalWip5 = itemsList.reduce((s, i) => s + (i.wip5 || 0), 0);
-                  const totalWipSewing = itemsList.reduce((s, i) => s + i.rowWipSewing, 0);
-                  const totalOutSewing = itemsList.reduce((s, i) => s + (i.outSewing || 0), 0);
-                  const totalCheck = itemsList.reduce((s, i) => s + i.rowCheck, 0);
-                  const totalCheckChk = itemsList.reduce((s, i) => s + i.rowCheckChk, 0);
-                  const totalChk3d = itemsList.reduce((s, i) => s + (i.chk3d || 0), 0);
-                  const totalWipFinish = itemsList.reduce((s, i) => s + (i.wipFinish || 0), 0);
-                  const totalOutPacking = itemsList.reduce((s, i) => s + (i.outPacking || 0), 0);
-                  const totalIncum = itemsList.reduce((s, i) => s + i.incum, 0);
-                  const totalOutcu = itemsList.reduce((s, i) => s + i.outcu, 0);
-                  const totalBlcOrder = itemsList.reduce((s, i) => s + i.blcOrder, 0);
-
-                  return (
-                    <div key={lineId} className="space-y-0 border border-slate-900 rounded bg-white overflow-hidden">
-                      {/* Yellow Line Header Banner */}
-                      <div className="bg-yellow-300 border-b border-slate-900 px-3 py-1.5 font-black text-slate-900 text-xs tracking-wider uppercase">
-                        WIP LINE {lineId.toUpperCase()}
-                      </div>
-                      <div className="bg-white border-b border-slate-900 px-3 py-1 font-bold text-slate-800 text-[11px] flex items-center justify-between">
-                        <span>PERIODE: {formatDateIndo(targetDate)}</span>
-                        {!hasExplicitData && (
-                          <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 font-normal">
-                            ⚡ Carryover Data Kemarin (Hanya WIP Sewing & WIP Finishing)
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Main Spreadsheet Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-[10px]">
-                          <thead>
-                            <tr className="bg-slate-200 text-slate-900 font-bold text-center border-b border-slate-900">
-                              <th className="border border-slate-900 p-1">SPO</th>
-                              <th className="border border-slate-900 p-1">STYLE</th>
-                              <th className="border border-slate-900 p-1">COLOR</th>
-                              <th className="border border-slate-900 p-1">SIZE</th>
-                              <th className="border border-slate-900 p-1">QTY ORDE</th>
-                              <th className="border border-slate-900 p-1">UNIT</th>
-                              <th className="border border-slate-900 p-1">IN HARI</th>
-                              <th className="border border-slate-900 p-1">WIPO</th>
-                              <th className="border border-slate-900 p-1">WIP1</th>
-                              <th className="border border-slate-900 p-1">WIP2</th>
-                              <th className="border border-slate-900 p-1">WIP3</th>
-                              <th className="border border-slate-900 p-1">WIP4</th>
-                              <th className="border border-slate-900 p-1">WIP5</th>
-                              <th className="border border-slate-900 p-1">WIP SEWI</th>
-                              <th className="border border-slate-900 p-1 bg-red-600 text-white font-black">CHEC</th>
-                              <th className="border border-slate-900 p-1">OUTP</th>
-                              <th className="border border-slate-900 p-1">CHK1</th>
-                              <th className="border border-slate-900 p-1 bg-amber-600 text-white font-black">CHEC CHK</th>
-                              <th className="border border-slate-900 p-1 bg-sky-100">WIP FINIS</th>
-                              <th className="border border-slate-900 p-1">OUT PACK</th>
-                              <th className="border border-slate-900 p-1">INCUM</th>
-                              <th className="border border-slate-900 p-1">OUTCU</th>
-                              <th className="border border-slate-900 p-1">BLC ORDER</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.keys(spoGroups).map((spoKey) => {
-                              const grp = spoGroups[spoKey];
-                              const grpQty = grp.reduce((s, i) => s + (i.qtyOrder || 0), 0);
-                              const grpInHari = grp.reduce((s, i) => s + (i.inHariIni || 0), 0);
-                              const grpW0 = grp.reduce((s, i) => s + (i.wip0 || 0), 0);
-                              const grpW1 = grp.reduce((s, i) => s + (i.wip1 || 0), 0);
-                              const grpW2 = grp.reduce((s, i) => s + (i.wip2 || 0), 0);
-                              const grpW3 = grp.reduce((s, i) => s + (i.wip3 || 0), 0);
-                              const grpW4 = grp.reduce((s, i) => s + (i.wip4 || 0), 0);
-                              const grpW5 = grp.reduce((s, i) => s + (i.wip5 || 0), 0);
-                              const grpWipSew = grp.reduce((s, i) => s + i.rowWipSewing, 0);
-                              const grpOutSew = grp.reduce((s, i) => s + (i.outSewing || 0), 0);
-                              const grpCheck = grp.reduce((s, i) => s + i.rowCheck, 0);
-                              const grpCheckChk = grp.reduce((s, i) => s + i.rowCheckChk, 0);
-                              const grpChk3d = grp.reduce((s, i) => s + (i.chk3d || 0), 0);
-                              const grpWipFin = grp.reduce((s, i) => s + (i.wipFinish || 0), 0);
-                              const grpOutPack = grp.reduce((s, i) => s + (i.outPacking || 0), 0);
-                              const grpIncum = grp.reduce((s, i) => s + i.incum, 0);
-                              const grpOutcu = grp.reduce((s, i) => s + i.outcu, 0);
-                              const grpBlcOrder = grp.reduce((s, i) => s + i.blcOrder, 0);
-
-                              const firstItem = grp[0];
-
-                              return (
-                                <React.Fragment key={spoKey}>
-                                  {grp.map((item, idx) => (
-                                    <tr key={item.id || idx} className="text-center hover:bg-slate-50">
-                                      <td className="border border-slate-900 p-1 font-bold text-left">{item.spo}</td>
-                                      <td className="border border-slate-900 p-1 text-left truncate max-w-[120px]">{item.style}</td>
-                                      <td className="border border-slate-900 p-1 text-left truncate max-w-[80px]">{item.color}</td>
-                                      <td className="border border-slate-900 p-1 font-bold">{item.size}</td>
-                                      <td className="border border-slate-900 p-1 text-right">{item.qtyOrder?.toLocaleString() || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.unit || 'PCE'}</td>
-                                      <td className="border border-slate-900 p-1">{item.inHariIni || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip0 || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip1 || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip2 || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip3 || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip4 || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.wip5 || '-'}</td>
-                                      <td className="border border-slate-900 p-1 font-bold">{item.rowWipSewing || '0'}</td>
-                                      <td className="border border-slate-900 p-1 bg-red-100 text-red-900 font-bold">
-                                        {item.rowCheck === 0 ? '-' : item.rowCheck > 0 ? `+${item.rowCheck}` : item.rowCheck}
-                                      </td>
-                                      <td className="border border-slate-900 p-1">{item.outSewing || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.chk3d || '-'}</td>
-                                      <td className="border border-slate-900 p-1 bg-amber-100 text-amber-900 font-bold">
-                                        {item.rowCheckChk === 0 ? '-' : item.rowCheckChk > 0 ? `+${item.rowCheckChk}` : item.rowCheckChk}
-                                      </td>
-                                      <td className="border border-slate-900 p-1 bg-sky-50 font-bold">{item.wipFinish || '0'}</td>
-                                      <td className="border border-slate-900 p-1">{item.outPacking || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.incum || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.outcu || '-'}</td>
-                                      <td className="border border-slate-900 p-1">{item.blcOrder || '-'}</td>
-                                    </tr>
-                                  ))}
-
-                                  {/* SPO TOTAL ROW (BOLD BLUE TEXT) */}
-                                  <tr className="bg-slate-50 font-bold text-blue-700 border-t border-b border-slate-900">
-                                    <td colSpan={4} className="border border-slate-900 p-1 text-left uppercase text-blue-700">
-                                      {firstItem.spo} {firstItem.style} TOTAL
-                                    </td>
-                                    <td className="border border-slate-900 p-1 text-right text-blue-700">{grpQty.toLocaleString()}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">PCE</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpInHari || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW0 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW1 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW2 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW3 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW4 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpW5 || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpWipSew}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpCheck === 0 ? '-' : grpCheck}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpOutSew || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpChk3d || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpCheckChk === 0 ? '-' : grpCheckChk}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpWipFin}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpOutPack || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpIncum || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpOutcu || '-'}</td>
-                                    <td className="border border-slate-900 p-1 text-blue-700">{grpBlcOrder || '-'}</td>
-                                  </tr>
-                                </React.Fragment>
-                              );
-                            })}
-
-                            {/* LINE GRAND TOTAL ROW */}
-                            <tr className="bg-slate-200 font-black text-slate-900 border-t-2 border-slate-900">
-                              <td colSpan={4} className="border border-slate-900 p-1 text-right">TOTAL:</td>
-                              <td className="border border-slate-900 p-1 text-right">{totalQty.toLocaleString()}</td>
-                              <td className="border border-slate-900 p-1">PCE</td>
-                              <td className="border border-slate-900 p-1">{totalInHariIni}</td>
-                              <td className="border border-slate-900 p-1">{totalWip0}</td>
-                              <td className="border border-slate-900 p-1">{totalWip1}</td>
-                              <td className="border border-slate-900 p-1">{totalWip2}</td>
-                              <td className="border border-slate-900 p-1">{totalWip3}</td>
-                              <td className="border border-slate-900 p-1">{totalWip4}</td>
-                              <td className="border border-slate-900 p-1">{totalWip5}</td>
-                              <td className="border border-slate-900 p-1">{totalWipSewing}</td>
-                              <td className="border border-slate-900 p-1">{totalCheck === 0 ? '0' : totalCheck}</td>
-                              <td className="border border-slate-900 p-1">{totalOutSewing}</td>
-                              <td className="border border-slate-900 p-1">{totalChk3d}</td>
-                              <td className="border border-slate-900 p-1">{totalCheckChk === 0 ? '0' : totalCheckChk}</td>
-                              <td className="border border-slate-900 p-1">{totalWipFinish}</td>
-                              <td className="border border-slate-900 p-1">{totalOutPacking}</td>
-                              <td className="border border-slate-900 p-1">{totalIncum}</td>
-                              <td className="border border-slate-900 p-1">{totalOutcu}</td>
-                              <td className="border border-slate-900 p-1">{totalBlcOrder}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Footer Notes & Manpower Summary Grid */}
-                      <div className="grid grid-cols-5 gap-2 p-3 bg-slate-100 border-t border-slate-900 text-[10px] font-mono">
-                        <div className="bg-white p-1.5 border border-slate-400 rounded">
-                          <span className="font-bold text-slate-600 block">TARGET MP:</span>
-                          <span className="font-bold text-slate-900">{mp.normalMp} Org ({mp.normalHours} Jam)</span>
-                        </div>
-                        <div className="bg-white p-1.5 border border-slate-400 rounded">
-                          <span className="font-bold text-slate-600 block">LEMBUR MP:</span>
-                          <span className="font-bold text-slate-900">{mp.overtimeMp} Org ({mp.overtimeHours} Jam)</span>
-                        </div>
-                        <div className="bg-yellow-300 p-1.5 border border-yellow-500 rounded font-bold text-slate-900">
-                          <span className="block text-[9px] uppercase">AKTUAL WIP SEWING:</span>
-                          <span className="text-xs font-black">{totalWipSewing} PCE</span>
-                        </div>
-                        <div className="bg-purple-200 p-1.5 border border-purple-400 rounded font-bold text-slate-900">
-                          <span className="block text-[9px] uppercase">AKTUAL WIP FINISHING:</span>
-                          <span className="text-xs font-black">{totalWipFinish} PCE</span>
-                        </div>
-                        <div className="bg-white p-1.5 border border-slate-400 rounded">
-                          <span className="font-bold text-slate-600 block">STATUS JAM KERJA:</span>
-                          <span className="font-bold text-slate-900">{dev.totalHours} Jam ({dev.isDeviation ? '⚠️ DEVIASI' : 'NORMAL'})</span>
-                        </div>
-                      </div>
+                previewLinesGroup.map((group) => (
+                  <div key={group.title} className="space-y-6">
+                    <div className="bg-slate-900 text-white px-4 py-2 font-black text-xs uppercase tracking-wider rounded-lg flex items-center justify-between shadow-xs">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-yellow-400" />
+                        LAPORAN WIP - {group.title}
+                      </span>
+                      <span className="text-[11px] text-slate-300 font-normal">
+                        Total {group.lines.length} Line Production
+                      </span>
                     </div>
-                  );
-                })
+
+                    {group.lines.map(([lineId, { itemsList, hasExplicitData }]) => {
+                      const mp = getLineManpower(lineId, targetDate);
+                      const dev = checkManpowerDeviation(mp);
+
+                      const spoGroups: Record<string, typeof itemsList> = {};
+                      itemsList.forEach((item) => {
+                        const key = item.spo || '-';
+                        if (!spoGroups[key]) spoGroups[key] = [];
+                        spoGroups[key].push(item);
+                      });
+
+                      Object.keys(spoGroups).forEach((k) => {
+                        spoGroups[k].sort((a, b) => compareSizes(a.size, b.size));
+                      });
+
+                      const totalQty = itemsList.reduce((s, i) => s + (i.qtyOrder || 0), 0);
+                      const totalInHariIni = itemsList.reduce((s, i) => s + (i.inHariIni || 0), 0);
+                      const totalWip0 = itemsList.reduce((s, i) => s + (i.wip0 || 0), 0);
+                      const totalWip1 = itemsList.reduce((s, i) => s + (i.wip1 || 0), 0);
+                      const totalWip2 = itemsList.reduce((s, i) => s + (i.wip2 || 0), 0);
+                      const totalWip3 = itemsList.reduce((s, i) => s + (i.wip3 || 0), 0);
+                      const totalWip4 = itemsList.reduce((s, i) => s + (i.wip4 || 0), 0);
+                      const totalWip5 = itemsList.reduce((s, i) => s + (i.wip5 || 0), 0);
+                      const totalWipSewing = itemsList.reduce((s, i) => s + i.rowWipSewing, 0);
+                      const totalOutSewing = itemsList.reduce((s, i) => s + (i.outSewing || 0), 0);
+                      const totalChk3d = itemsList.reduce((s, i) => s + (i.chk3d || 0), 0);
+                      const totalWipFinish = itemsList.reduce((s, i) => s + (i.wipFinish || 0), 0);
+                      const totalOutPacking = itemsList.reduce((s, i) => s + (i.outPacking || 0), 0);
+                      const totalIncum = itemsList.reduce((s, i) => s + i.incum, 0);
+                      const totalOutcu = itemsList.reduce((s, i) => s + i.outcu, 0);
+                      const totalBlcOrder = itemsList.reduce((s, i) => s + i.blcOrder, 0);
+
+                      return (
+                        <div key={lineId} className="space-y-0 border border-slate-900 rounded bg-white overflow-hidden shadow-xs">
+                          {/* Yellow Line Header Banner */}
+                          <div className="bg-yellow-300 border-b border-slate-900 px-3 py-1.5 font-black text-slate-900 text-xs tracking-wider uppercase">
+                            WIP LINE {lineId.toUpperCase()}
+                          </div>
+                          <div className="bg-white border-b border-slate-900 px-3 py-1 font-bold text-slate-800 text-[11px] flex items-center justify-between">
+                            <span>PERIODE: {formatDateIndo(targetDate)}</span>
+                            {!hasExplicitData && (
+                              <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 font-normal">
+                                ⚡ Carryover Data Kemarin (Hanya WIP Sewing & WIP Finishing)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Main Table without CHEC / CHEC CHK */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-[10px]">
+                              <thead>
+                                <tr className="bg-slate-200 text-slate-900 font-bold text-center border-b border-slate-900">
+                                  <th className="border border-slate-900 p-1">SPO</th>
+                                  <th className="border border-slate-900 p-1">STYLE</th>
+                                  <th className="border border-slate-900 p-1">COLOR</th>
+                                  <th className="border border-slate-900 p-1">SIZE</th>
+                                  <th className="border border-slate-900 p-1">QTY ORDE</th>
+                                  <th className="border border-slate-900 p-1">UNIT</th>
+                                  <th className="border border-slate-900 p-1">IN HARI</th>
+                                  <th className="border border-slate-900 p-1">WIPO</th>
+                                  <th className="border border-slate-900 p-1">WIP1</th>
+                                  <th className="border border-slate-900 p-1">WIP2</th>
+                                  <th className="border border-slate-900 p-1">WIP3</th>
+                                  <th className="border border-slate-900 p-1">WIP4</th>
+                                  <th className="border border-slate-900 p-1">WIP5</th>
+                                  <th className="border border-slate-900 p-1">WIP SEWI</th>
+                                  <th className="border border-slate-900 p-1">OUTP</th>
+                                  <th className="border border-slate-900 p-1">CHK1</th>
+                                  <th className="border border-slate-900 p-1 bg-sky-100">WIP FINIS</th>
+                                  <th className="border border-slate-900 p-1">OUT PACK</th>
+                                  <th className="border border-slate-900 p-1">INCUM</th>
+                                  <th className="border border-slate-900 p-1">OUTCU</th>
+                                  <th className="border border-slate-900 p-1">BLC ORDER</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.keys(spoGroups).map((spoKey) => {
+                                  const grp = spoGroups[spoKey];
+                                  const grpQty = grp.reduce((s, i) => s + (i.qtyOrder || 0), 0);
+                                  const grpInHari = grp.reduce((s, i) => s + (i.inHariIni || 0), 0);
+                                  const grpW0 = grp.reduce((s, i) => s + (i.wip0 || 0), 0);
+                                  const grpW1 = grp.reduce((s, i) => s + (i.wip1 || 0), 0);
+                                  const grpW2 = grp.reduce((s, i) => s + (i.wip2 || 0), 0);
+                                  const grpW3 = grp.reduce((s, i) => s + (i.wip3 || 0), 0);
+                                  const grpW4 = grp.reduce((s, i) => s + (i.wip4 || 0), 0);
+                                  const grpW5 = grp.reduce((s, i) => s + (i.wip5 || 0), 0);
+                                  const grpWipSew = grp.reduce((s, i) => s + i.rowWipSewing, 0);
+                                  const grpOutSew = grp.reduce((s, i) => s + (i.outSewing || 0), 0);
+                                  const grpChk3d = grp.reduce((s, i) => s + (i.chk3d || 0), 0);
+                                  const grpWipFin = grp.reduce((s, i) => s + (i.wipFinish || 0), 0);
+                                  const grpOutPack = grp.reduce((s, i) => s + (i.outPacking || 0), 0);
+                                  const grpIncum = grp.reduce((s, i) => s + i.incum, 0);
+                                  const grpOutcu = grp.reduce((s, i) => s + i.outcu, 0);
+                                  const grpBlcOrder = grp.reduce((s, i) => s + i.blcOrder, 0);
+
+                                  const firstItem = grp[0];
+
+                                  return (
+                                    <React.Fragment key={spoKey}>
+                                      {grp.map((item, idx) => (
+                                        <tr key={item.id || idx} className="text-center hover:bg-slate-50">
+                                          <td className="border border-slate-900 p-1 font-bold text-left">{item.spo}</td>
+                                          <td className="border border-slate-900 p-1 text-left truncate max-w-[120px]">{item.style}</td>
+                                          <td className="border border-slate-900 p-1 text-left truncate max-w-[80px]">{item.color}</td>
+                                          <td className="border border-slate-900 p-1 font-bold">{item.size}</td>
+                                          <td className="border border-slate-900 p-1 text-right">{item.qtyOrder?.toLocaleString() || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.unit || 'PCE'}</td>
+                                          <td className="border border-slate-900 p-1">{item.inHariIni || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip0 || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip1 || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip2 || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip3 || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip4 || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.wip5 || '-'}</td>
+                                          <td className="border border-slate-900 p-1 font-bold">{item.rowWipSewing || '0'}</td>
+                                          <td className="border border-slate-900 p-1">{item.outSewing || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.chk3d || '-'}</td>
+                                          <td className="border border-slate-900 p-1 bg-sky-50 font-bold">{item.wipFinish || '0'}</td>
+                                          <td className="border border-slate-900 p-1">{item.outPacking || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.incum || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.outcu || '-'}</td>
+                                          <td className="border border-slate-900 p-1">{item.blcOrder || '-'}</td>
+                                        </tr>
+                                      ))}
+
+                                      {/* SPO TOTAL ROW */}
+                                      <tr className="bg-slate-50 font-bold text-blue-700 border-t border-b border-slate-900">
+                                        <td colSpan={4} className="border border-slate-900 p-1 text-left uppercase text-blue-700">
+                                          {firstItem.spo} {firstItem.style} TOTAL
+                                        </td>
+                                        <td className="border border-slate-900 p-1 text-right text-blue-700">{grpQty.toLocaleString()}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">PCE</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpInHari || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW0 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW1 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW2 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW3 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW4 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpW5 || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpWipSew}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutSew || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpChk3d || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpWipFin}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutPack || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpIncum || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpOutcu || '-'}</td>
+                                        <td className="border border-slate-900 p-1 text-blue-700">{grpBlcOrder || '-'}</td>
+                                      </tr>
+                                    </React.Fragment>
+                                  );
+                                })}
+
+                                {/* 10 BARIS KOSONG PER LINE UNTUK MANUALLING */}
+                                {Array.from({ length: 10 }).map((_, emptyIdx) => (
+                                  <tr key={`empty-${emptyIdx}`} className="text-center h-5 border-b border-slate-300">
+                                    <td className="border border-slate-900 p-1 font-bold text-slate-400 text-left">{emptyIdx + 1}</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                                  </tr>
+                                ))}
+
+                                {/* LINE GRAND TOTAL ROW */}
+                                <tr className="bg-slate-200 font-black text-slate-900 border-t-2 border-slate-900">
+                                  <td colSpan={4} className="border border-slate-900 p-1 text-right">TOTAL:</td>
+                                  <td className="border border-slate-900 p-1 text-right">{totalQty.toLocaleString()}</td>
+                                  <td className="border border-slate-900 p-1">PCE</td>
+                                  <td className="border border-slate-900 p-1">{totalInHariIni}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip0}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip1}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip2}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip3}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip4}</td>
+                                  <td className="border border-slate-900 p-1">{totalWip5}</td>
+                                  <td className="border border-slate-900 p-1">{totalWipSewing}</td>
+                                  <td className="border border-slate-900 p-1">{totalOutSewing}</td>
+                                  <td className="border border-slate-900 p-1">{totalChk3d}</td>
+                                  <td className="border border-slate-900 p-1">{totalWipFinish}</td>
+                                  <td className="border border-slate-900 p-1">{totalOutPacking}</td>
+                                  <td className="border border-slate-900 p-1">{totalIncum}</td>
+                                  <td className="border border-slate-900 p-1">{totalOutcu}</td>
+                                  <td className="border border-slate-900 p-1">{totalBlcOrder}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Footer Notes & Manpower Summary Grid */}
+                          <div className="grid grid-cols-5 gap-2 p-3 bg-slate-100 border-t border-slate-900 text-[10px] font-mono">
+                            <div className="bg-white p-1.5 border border-slate-400 rounded">
+                              <span className="font-bold text-slate-600 block">TARGET MP:</span>
+                              <span className="font-bold text-slate-900">{mp.normalMp} Org ({mp.normalHours} Jam)</span>
+                            </div>
+                            <div className="bg-white p-1.5 border border-slate-400 rounded">
+                              <span className="font-bold text-slate-600 block">LEMBUR MP:</span>
+                              <span className="font-bold text-slate-900">{mp.overtimeMp} Org ({mp.overtimeHours} Jam)</span>
+                            </div>
+                            <div className="bg-yellow-300 p-1.5 border border-yellow-500 rounded font-bold text-slate-900">
+                              <span className="block text-[9px] uppercase">AKTUAL WIP SEWING:</span>
+                              <span className="text-xs font-black">{totalWipSewing} PCE</span>
+                            </div>
+                            <div className="bg-purple-200 p-1.5 border border-purple-400 rounded font-bold text-slate-900">
+                              <span className="block text-[9px] uppercase">AKTUAL WIP FINISHING:</span>
+                              <span className="text-xs font-black">{totalWipFinish} PCE</span>
+                            </div>
+                            <div className="bg-white p-1.5 border border-slate-400 rounded">
+                              <span className="font-bold text-slate-600 block">STATUS JAM KERJA:</span>
+                              <span className="font-bold text-slate-900">{dev.totalHours} Jam ({dev.isDeviation ? '⚠️ DEVIASI' : 'NORMAL'})</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -936,9 +996,14 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-4 bg-slate-100 border-t border-slate-200 shrink-0">
-          <div className="text-xs text-slate-500 font-mono">
+          <div className="text-xs text-slate-500 font-mono flex items-center gap-2">
             <span>Selected Date: </span>
             <strong className="text-slate-900">{targetDate}</strong>
+            <span className="text-slate-300">|</span>
+            <span>Gedung: </span>
+            <strong className="text-slate-900">
+              {selectedBuilding === 'ALL' ? 'Semua Gedung (AB & CD)' : `Gedung ${selectedBuilding}`}
+            </strong>
           </div>
 
           <div className="flex items-center gap-3">
@@ -950,7 +1015,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             </button>
             <button
               onClick={handleDownloadPdf}
-              disabled={isGenerating || linesToRender.length === 0}
+              disabled={isGenerating || allLinesToRender.length === 0}
               className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg transition disabled:opacity-50"
             >
               {isGenerating ? (

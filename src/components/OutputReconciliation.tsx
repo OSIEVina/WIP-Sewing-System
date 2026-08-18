@@ -150,9 +150,9 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
   // String normalization helpers for robust matching
   const cleanLine = (lineStr?: string) => {
     if (!lineStr) return '';
-    const upper = lineStr.trim().toUpperCase();
-    const match = upper.match(/^([A-Z]+)0*(\d+)$/);
-    return match ? `${match[1]}${match[2].padStart(2, '0')}` : upper;
+    const stripped = lineStr.replace(/line\s*/i, '').trim().toUpperCase();
+    const match = stripped.match(/^([A-Z]+)0*(\d+)$/);
+    return match ? `${match[1]}${match[2].padStart(2, '0')}` : stripped;
   };
 
   const cleanSpo = (spoStr?: string) => {
@@ -354,16 +354,18 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
   // Unique Line & Date pairs for Manpower & Working Hours breakdown & Output Gap
   const lineDatePairsMap: Record<string, { line: string; date: string }> = {};
   wipItems.forEach((w) => {
-    const line = w.lineId;
-    const date = getWipDate(w) || new Date().toISOString().split('T')[0];
+    const line = cleanLine(w.lineId) || w.lineId;
+    const rawDate = getWipDate(w) || new Date().toISOString().split('T')[0];
+    const date = normalizeDate(rawDate) || rawDate;
     const key = `${cleanLine(line)}_${date}`;
     if (!lineDatePairsMap[key]) {
       lineDatePairsMap[key] = { line, date };
     }
   });
   chkItems.forEach((c) => {
-    const line = c.line;
-    const date = getChkDate(c) || new Date().toISOString().split('T')[0];
+    const line = cleanLine(c.line) || c.line;
+    const rawDate = getChkDate(c) || new Date().toISOString().split('T')[0];
+    const date = normalizeDate(rawDate) || rawDate;
     const key = `${cleanLine(line)}_${date}`;
     if (!lineDatePairsMap[key]) {
       lineDatePairsMap[key] = { line, date };
@@ -372,18 +374,50 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
 
   const allMpMap = getAllLineManpower();
   const lineDateManpowerSummary = Object.values(lineDatePairsMap).map(({ line, date }) => {
-    const key = `${cleanLine(line)}_${date}`;
-    const hasMp = !!allMpMap[key];
+    const normLine = cleanLine(line);
+    const normDate = normalizeDate(date);
+    const key = `${normLine}_${date}`;
+    const hasMp = !!allMpMap[key] || !!allMpMap[`${normLine}_${normDate}`];
     const mp = getLineManpower(line, date);
     const dev = checkManpowerDeviation(mp);
 
-    const lineDateWip = wipItems
-      .filter((w) => cleanLine(w.lineId) === cleanLine(line) && getWipDate(w) === date)
+    // 1. Direct WIP matching on line and date
+    const directWip = wipItems
+      .filter((w) => {
+        const wLine = cleanLine(w.lineId);
+        const wDate = normalizeDate(getWipDate(w));
+        return wLine === normLine && (wDate === normDate || getWipDate(w) === date);
+      })
       .reduce((sum, w) => sum + (w.outSewing || 0), 0);
 
-    const matchingChkForDate = chkItems.filter(
-      (c) => cleanLine(c.line) === cleanLine(line) && getChkDate(c) === date
-    );
+    // 2. Sum from allRows (which respects Auto Match & Total modes)
+    const rowsWip = allRows
+      .filter((r) => {
+        const rLine = cleanLine(r.line);
+        const rDate = normalizeDate(r.date || '');
+        return rLine === normLine && (rDate === normDate || r.date === date);
+      })
+      .reduce((sum, r) => sum + (r.wipOutSewing || 0), 0);
+
+    // 3. Line-level total WIP output fallback if matchMode !== 'strict_date'
+    const lineTotalWip = wipItems
+      .filter((w) => cleanLine(w.lineId) === normLine)
+      .reduce((sum, w) => sum + (w.outSewing || 0), 0);
+
+    const lineDateWip =
+      directWip > 0
+        ? directWip
+        : rowsWip > 0
+        ? rowsWip
+        : matchMode !== 'strict_date' && lineTotalWip > 0
+        ? lineTotalWip
+        : 0;
+
+    const matchingChkForDate = chkItems.filter((c) => {
+      const cLine = cleanLine(c.line);
+      const cDate = normalizeDate(getChkDate(c));
+      return cLine === normLine && (cDate === normDate || getChkDate(c) === date);
+    });
     const lineDateChk = matchingChkForDate.reduce((sum, c) => sum + (c.output || 0), 0);
     const totalJamChk = new Set(matchingChkForDate.map((c) => c.jamKe)).size;
     const totalJamWip = hasMp ? dev.totalHours : 0;
@@ -405,8 +439,8 @@ export const OutputReconciliation: React.FC<OutputReconciliationProps> = ({
       selisih: lineDateWip - lineDateChk,
     };
   }).filter((item) => {
-    const matchesLine = !selectedLine || item.line === selectedLine;
-    const matchesDate = !selectedDate || item.date.includes(selectedDate);
+    const matchesLine = !selectedLine || cleanLine(item.line) === cleanLine(selectedLine);
+    const matchesDate = !selectedDate || item.date.includes(selectedDate) || normalizeDate(item.date).includes(normalizeDate(selectedDate));
     return matchesLine && matchesDate;
   }).sort((a, b) => b.date.localeCompare(a.date) || a.line.localeCompare(b.line));
 
