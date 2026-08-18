@@ -337,10 +337,14 @@ export const WipTable: React.FC<WipTableProps> = ({
     const totalWipFinish = filteredItems.reduce((s, i) => s + getItemWipFinish(i), 0);
     const totalOutPacking = filteredItems.reduce((s, i) => s + (i.outPacking || 0), 0);
     const totalCheck = filteredItems.reduce((s, item) => {
-      const scanInVal = item.inHariIni || 0;
       const rowWipSewing = getItemWipSewing(item);
-      const outSewingVal = item.outSewing || 0;
-      return s + (scanInVal - (rowWipSewing + outSewingVal));
+      const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+      return s + (rowWipSewing - wipStationSum);
+    }, 0);
+    const totalCheckChk = filteredItems.reduce((s, item) => {
+      const chkVal = getChk10Value(item);
+      const outS = item.outSewing || 0;
+      return s + (chkVal - outS);
     }, 0);
 
     return {
@@ -359,6 +363,7 @@ export const WipTable: React.FC<WipTableProps> = ({
       totalWipFinish,
       totalOutPacking,
       totalCheck,
+      totalCheckChk,
       rowCount: filteredItems.length,
       spoCount: sortedSpoKeys.length,
     };
@@ -892,9 +897,10 @@ export const WipTable: React.FC<WipTableProps> = ({
               <th className="p-2.5 border-r border-slate-200 text-center">WIP4</th>
               <th className="p-2.5 border-r border-slate-200 text-center">WIP5</th>
               <th className="p-2.5 border-r border-slate-200 text-center bg-slate-100/50">WIP SEWING</th>
+              <th className="p-2.5 border-r border-slate-200 text-center text-teal-800 bg-teal-50/60 min-w-[110px]" title="Check WIP Sewing: WIP Sewing - (WIP0 + WIP1 + WIP2 + WIP3 + WIP4 + WIP5)">CHECK</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-emerald-700 bg-emerald-50/50">OUTPUT SEWING</th>
-              <th className="p-2.5 border-r border-slate-200 text-center text-teal-800 bg-teal-50/60 min-w-[110px]" title="Check: Scan In - (WIP Sewing + Output Sewing)">CHECK</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-purple-700 bg-purple-50/30">CHK10</th>
+              <th className="p-2.5 border-r border-slate-200 text-center text-red-800 bg-red-50/60 min-w-[110px]" title="Check CHK1: CHK10 - Output Sewing">CHEC CHK</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-indigo-700 bg-indigo-50/30" title="Scan Distribusi (CHK10 Scan)">CHK10 SCAN</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-amber-700 bg-amber-50/30">WIP FINISHING</th>
               <th className="p-2.5 border-r border-slate-200 text-center text-blue-700 bg-blue-50/30">OUT PACKING</th>
@@ -905,7 +911,7 @@ export const WipTable: React.FC<WipTableProps> = ({
           <tbody className="divide-y divide-slate-200/80 font-mono text-slate-700">
             {sortedSpoKeys.length === 0 ? (
               <tr>
-                <td colSpan={23} className="p-8 text-center text-slate-400 text-xs font-sans">
+                <td colSpan={24} className="p-8 text-center text-slate-400 text-xs font-sans">
                   Tidak ada data WIP untuk ditampilkan.
                 </td>
               </tr>
@@ -929,10 +935,14 @@ export const WipTable: React.FC<WipTableProps> = ({
                 const totalWipFinish = groupItems.reduce((s, i) => s + getItemWipFinish(i), 0);
                 const totalOutPacking = groupItems.reduce((s, i) => s + (i.outPacking || 0), 0);
                 const totalCheck = groupItems.reduce((s, item) => {
-                  const scanInVal = item.inHariIni || 0;
                   const rowWipSewing = getItemWipSewing(item);
-                  const outSewingVal = item.outSewing || 0;
-                  return s + (scanInVal - (rowWipSewing + outSewingVal));
+                  const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+                  return s + (rowWipSewing - wipStationSum);
+                }, 0);
+                const totalCheckChk = groupItems.reduce((s, item) => {
+                  const chkVal = getChk10Value(item);
+                  const outS = item.outSewing || 0;
+                  return s + (chkVal - outS);
                 }, 0);
 
                 return (
@@ -940,8 +950,12 @@ export const WipTable: React.FC<WipTableProps> = ({
                     {groupItems.map((item, itemIdx) => {
                       const scanInVal = item.inHariIni || 0;
                       const rowWipSewing = getItemWipSewing(item);
+                      const wipStationSum = (item.wip0 || 0) + (item.wip1 || 0) + (item.wip2 || 0) + (item.wip3 || 0) + (item.wip4 || 0) + (item.wip5 || 0);
+                      const rowCheckValue = rowWipSewing - wipStationSum;
+
+                      const chk10Val = getChk10Value(item);
                       const outSewingVal = item.outSewing || 0;
-                      const rowCheckValue = scanInVal - (rowWipSewing + outSewingVal);
+                      const rowCheckChkValue = chk10Val - outSewingVal;
 
                       return (
                         <tr
@@ -985,14 +999,11 @@ export const WipTable: React.FC<WipTableProps> = ({
                               <span className="text-slate-400 font-normal">0</span>
                             )}
                           </td>
-                          <td className="p-2.5 border-r border-slate-200 text-center font-bold text-emerald-700 bg-emerald-50/60">
-                            {item.outSewing || '-'}
-                          </td>
                           <td className="p-2.5 border-r border-slate-200 text-center font-bold">
                             {rowCheckValue === 0 ? (
                               <span
                                 className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono"
-                                title={`Scan In (${scanInVal}) - [WIP Sewing (${rowWipSewing}) + Output Sewing (${outSewingVal})] = 0`}
+                                title={`WIP Sewing (${rowWipSewing}) - WIP0..5 (${wipStationSum}) = 0`}
                               >
                                 ✓ 0
                               </span>
@@ -1003,13 +1014,37 @@ export const WipTable: React.FC<WipTableProps> = ({
                                     ? 'text-amber-700 bg-amber-50 border-amber-200'
                                     : 'text-red-700 bg-red-50 border-red-200'
                                 }`}
-                                title={`Scan In (${scanInVal}) - [WIP Sewing (${rowWipSewing}) + Output Sewing (${outSewingVal})] = ${rowCheckValue}`}
+                                title={`WIP Sewing (${rowWipSewing}) - WIP0..5 (${wipStationSum}) = ${rowCheckValue}`}
                               >
                                 {rowCheckValue > 0 ? `+${rowCheckValue}` : rowCheckValue}
                               </span>
                             )}
                           </td>
-                          <td className="p-2.5 border-r border-slate-200 text-center text-purple-700 font-semibold">{getChk10Value(item) || '-'}</td>
+                          <td className="p-2.5 border-r border-slate-200 text-center font-bold text-emerald-700 bg-emerald-50/60">
+                            {item.outSewing || '-'}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-200 text-center text-purple-700 font-semibold">{chk10Val || '-'}</td>
+                          <td className="p-2.5 border-r border-slate-200 text-center font-bold">
+                            {rowCheckChkValue === 0 ? (
+                              <span
+                                className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono"
+                                title={`CHK10 (${chk10Val}) - Output Sewing (${outSewingVal}) = 0`}
+                              >
+                                ✓ 0
+                              </span>
+                            ) : (
+                              <span
+                                className={`px-1.5 py-0.5 rounded border inline-block font-mono ${
+                                  rowCheckChkValue > 0
+                                    ? 'text-amber-700 bg-amber-50 border-amber-200'
+                                    : 'text-red-700 bg-red-50 border-red-200'
+                                }`}
+                                title={`CHK10 (${chk10Val}) - Output Sewing (${outSewingVal}) = ${rowCheckChkValue}`}
+                              >
+                                {rowCheckChkValue > 0 ? `+${rowCheckChkValue}` : rowCheckChkValue}
+                              </span>
+                            )}
+                          </td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-semibold bg-indigo-50/20">{getScanDistribusiValue(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-amber-700 font-semibold">{getItemWipFinish(item) || '-'}</td>
                           <td className="p-2.5 border-r border-slate-200 text-center text-blue-700">{item.outPacking || '-'}</td>
@@ -1066,7 +1101,6 @@ export const WipTable: React.FC<WipTableProps> = ({
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip4}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center">{totalWip5}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center font-black bg-slate-200/70 text-slate-900">{totalWipSewing}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center text-emerald-700 font-black">{totalOutSewing}</td>
                       <td className="p-2.5 border-r border-slate-200 text-center font-black">
                         {totalCheck === 0 ? (
                           <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono">
@@ -1078,10 +1112,22 @@ export const WipTable: React.FC<WipTableProps> = ({
                           </span>
                         )}
                       </td>
-                      <td className="p-2.5 border-r border-slate-200 text-center">{totalChk3d}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-emerald-700 font-black">{totalOutSewing}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-purple-700 font-semibold">{totalChk3d}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center font-black">
+                        {totalCheckChk === 0 ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block font-mono">
+                            ✓ 0
+                          </span>
+                        ) : (
+                          <span className={totalCheckChk > 0 ? 'text-amber-700' : 'text-red-700'}>
+                            {totalCheckChk > 0 ? `+${totalCheckChk}` : totalCheckChk}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-2.5 border-r border-slate-200 text-center text-indigo-700 font-bold">{totalScanDist}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center">{totalWipFinish}</td>
-                      <td className="p-2.5 border-r border-slate-200 text-center">{totalOutPacking}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-amber-700 font-semibold">{totalWipFinish}</td>
+                      <td className="p-2.5 border-r border-slate-200 text-center text-blue-700">{totalOutPacking}</td>
                       <td className="p-2.5 border-r border-slate-200"></td>
                       <td className="p-2.5"></td>
                     </tr>
@@ -1133,9 +1179,6 @@ export const WipTable: React.FC<WipTableProps> = ({
                 <td className="p-3 border-r border-slate-700 text-center text-yellow-300 font-black bg-yellow-950/40 text-xs">
                   {grandTotals.totalWipSewing}
                 </td>
-                <td className="p-3 border-r border-slate-700 text-center text-emerald-300 font-black bg-emerald-950/50 text-xs">
-                  {grandTotals.totalOutSewing}
-                </td>
                 <td className="p-3 border-r border-slate-700 text-center font-black">
                   {grandTotals.totalCheck === 0 ? (
                     <span className="text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/40 inline-block font-mono text-[10px]">
@@ -1153,8 +1196,28 @@ export const WipTable: React.FC<WipTableProps> = ({
                     </span>
                   )}
                 </td>
+                <td className="p-3 border-r border-slate-700 text-center text-emerald-300 font-black bg-emerald-950/50 text-xs">
+                  {grandTotals.totalOutSewing}
+                </td>
                 <td className="p-3 border-r border-slate-700 text-center text-purple-200 font-bold bg-purple-950/30">
                   {grandTotals.totalChk3d}
+                </td>
+                <td className="p-3 border-r border-slate-700 text-center font-black">
+                  {grandTotals.totalCheckChk === 0 ? (
+                    <span className="text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/40 inline-block font-mono text-[10px]">
+                      ✓ 0 (Balans)
+                    </span>
+                  ) : (
+                    <span
+                      className={`px-2 py-0.5 rounded border inline-block font-mono text-[10px] ${
+                        grandTotals.totalCheckChk > 0
+                          ? 'text-amber-200 bg-amber-900/70 border-amber-500/50'
+                          : 'text-rose-200 bg-rose-900/70 border-rose-500/50'
+                      }`}
+                    >
+                      {grandTotals.totalCheckChk > 0 ? `+${grandTotals.totalCheckChk}` : grandTotals.totalCheckChk}
+                    </span>
+                  )}
                 </td>
                 <td className="p-3 border-r border-slate-700 text-center text-cyan-200 font-black bg-cyan-950/40 text-xs">
                   {grandTotals.totalScanDist}
@@ -1657,6 +1720,8 @@ export const WipTable: React.FC<WipTableProps> = ({
         availableDates={availableDates}
         items={items}
         chkItems={chkItems}
+        globalReportDate={globalReportDate}
+        setGlobalReportDate={setGlobalReportDate}
       />
     </div>
   );
