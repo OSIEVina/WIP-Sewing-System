@@ -32,7 +32,6 @@ export const LoginLeaderModal: React.FC<LoginLeaderModalProps> = ({
       setNik('9370');
       setError('');
       setMatchedUser(null);
-      setIsLoadingUsers(true);
 
       fetchLiveAllowedUsers()
         .then((users) => {
@@ -40,9 +39,6 @@ export const LoginLeaderModal: React.FC<LoginLeaderModalProps> = ({
         })
         .catch((err) => {
           console.warn('Error fetching live allowed users:', err);
-        })
-        .finally(() => {
-          setIsLoadingUsers(false);
         });
     }
   }, [isOpen]);

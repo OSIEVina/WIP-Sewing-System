@@ -117,6 +117,109 @@ export default function App() {
 
   const [isRefreshingScan, setIsRefreshingScan] = useState<boolean>(false);
 
+  // Multi-tab synchronization (BroadcastChannel + storage event listener)
+  useEffect(() => {
+    const reloadWipFromLocalStorage = () => {
+      const saved = safeGetItem('wip_sewing_items');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setWipItems(parsed);
+          }
+        } catch (err) {
+          console.warn('Cross-tab storage parse error:', err);
+        }
+      }
+    };
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'wip_sewing_items') {
+        reloadWipFromLocalStorage();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('wip_sewing_tab_channel');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'WIP_DATA_UPDATED') {
+          reloadWipFromLocalStorage();
+        }
+      };
+    } catch {
+      // BroadcastChannel unsupported or restricted in browser environment
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorageEvent);
+      if (bc) {
+        try { bc.close(); } catch {}
+      }
+    };
+  }, []);
+
+  const broadcastCrossTabUpdate = () => {
+    try {
+      const bc = new BroadcastChannel('wip_sewing_tab_channel');
+      bc.postMessage({ type: 'WIP_DATA_UPDATED', timestamp: Date.now() });
+      bc.close();
+    } catch {
+      // ignore
+    }
+  };
+
+  // Helper to safely merge local items with remote spreadsheet items without dropping unsynced entries
+  const mergeLocalAndRemoteData = (local: WipItem[], remote: WipItem[]): WipItem[] => {
+    if (!remote || remote.length === 0) return local;
+    if (!local || local.length === 0) return mergeDuplicateWipItems(remote);
+
+    const cleanLine = (l?: string) => (l ? l.trim().toUpperCase() : '');
+    const cleanSpo = (s?: string) => (s ? s.replace(/\s+/g, '').toLowerCase() : '');
+    const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
+    const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
+    const getItemDate = (i: WipItem) =>
+      normalizeDateStr(i.date || (i.createdAt ? i.createdAt.split('T')[0] : ''));
+
+    const localMap = new Map<string, WipItem>();
+    local.forEach((item) => {
+      const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanColor(item.color)}|${cleanSize(item.size)}|${getItemDate(item)}`;
+      localMap.set(key, item);
+    });
+
+    const merged: WipItem[] = [];
+    const processedKeys = new Set<string>();
+
+    remote.forEach((remoteItem) => {
+      const key = `${cleanLine(remoteItem.lineId)}|${cleanSpo(remoteItem.spo)}|${cleanColor(remoteItem.color)}|${cleanSize(remoteItem.size)}|${getItemDate(remoteItem)}`;
+      processedKeys.add(key);
+      const localItem = localMap.get(key);
+      if (!localItem) {
+        merged.push(remoteItem);
+      } else {
+        const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+        const remoteTime = new Date(remoteItem.updatedAt || remoteItem.createdAt || 0).getTime();
+        if (localTime >= remoteTime) {
+          merged.push(localItem);
+        } else {
+          merged.push(remoteItem);
+        }
+      }
+    });
+
+    // Keep any local item not present in remote yet (e.g. freshly inputted entry from another tab)
+    local.forEach((localItem) => {
+      const key = `${cleanLine(localItem.lineId)}|${cleanSpo(localItem.spo)}|${cleanColor(localItem.color)}|${cleanSize(localItem.size)}|${getItemDate(localItem)}`;
+      if (!processedKeys.has(key)) {
+        merged.push(localItem);
+      }
+    });
+
+    return mergeDuplicateWipItems(merged);
+  };
+
   // Fetch live SPO options, CHK10 records, and Scan Distribusi records from Google Sheets on mount
   useEffect(() => {
     loadSpoSheetData();
@@ -128,20 +231,30 @@ export default function App() {
   const loadInitialWipData = async () => {
     const webAppUrl = getEffectiveWebAppUrl();
     try {
+      const savedLocalStr = safeGetItem('wip_sewing_items');
+      let currentLocal: WipItem[] = [];
+      if (savedLocalStr) {
+        try { currentLocal = JSON.parse(savedLocalStr); } catch {}
+      }
+
       if (webAppUrl) {
         const remoteWip = await fetchWebAppWipData(webAppUrl);
         if (remoteWip !== null && Array.isArray(remoteWip)) {
-          setWipItems(remoteWip);
-          safeSetItem('wip_sewing_items', JSON.stringify(remoteWip));
+          const merged = mergeLocalAndRemoteData(currentLocal, remoteWip);
+          setWipItems(merged);
+          safeSetItem('wip_sewing_items', JSON.stringify(merged));
           safeSetItem('google_sheets_imported', 'true');
+          broadcastCrossTabUpdate();
           return;
         }
       }
       const csvWip = await fetchLiveWipSheetCsv();
       if (csvWip !== null && Array.isArray(csvWip)) {
-        setWipItems(csvWip);
-        safeSetItem('wip_sewing_items', JSON.stringify(csvWip));
+        const merged = mergeLocalAndRemoteData(currentLocal, csvWip);
+        setWipItems(merged);
+        safeSetItem('wip_sewing_items', JSON.stringify(merged));
         safeSetItem('google_sheets_imported', 'true');
+        broadcastCrossTabUpdate();
       }
     } catch (err) {
       console.warn('Background WIP sheet initial sync notice:', err);
@@ -313,37 +426,43 @@ export default function App() {
               }
             });
 
-            if (JSON.stringify(current) !== JSON.stringify(merged)) {
+            // Check if merged data differs from current
+            if (merged.length !== current.length || JSON.stringify(current.map(c => c.updatedAt)) !== JSON.stringify(merged.map(m => m.updatedAt))) {
               safeSetItem('wip_sewing_items', JSON.stringify(merged));
               return merged;
             }
             return current;
           });
 
-          // Sync lines leader info based on fetchedWip data
+          // Sync lines leader info efficiently via map lookup
+          const latestLeaderByLineMap = new Map<string, string>();
+          const latestTimeByLineMap = new Map<string, number>();
+
+          fetchedWip.forEach((w) => {
+            const lineKey = w.lineId ? w.lineId.trim().toUpperCase() : '';
+            if (!lineKey) return;
+            const leader = w.updatedBy || w.leaderNik || w.leaderName;
+            if (!leader) return;
+            const ts = new Date(w.updatedAt || w.createdAt || 0).getTime();
+            const prevTs = latestTimeByLineMap.get(lineKey) || 0;
+            if (ts >= prevTs) {
+              latestTimeByLineMap.set(lineKey, ts);
+              latestLeaderByLineMap.set(lineKey, leader);
+            }
+          });
+
           setLines((prevLines) => {
             let changed = false;
             const updated = prevLines.map((line) => {
-              const lineWips = fetchedWip.filter(
-                (w) => w.lineId?.trim().toUpperCase() === line.id.trim().toUpperCase()
-              );
-              if (lineWips.length > 0) {
-                const latestWip = [...lineWips].sort(
-                  (a, b) =>
-                    new Date(b.updatedAt || b.createdAt || 0).getTime() -
-                    new Date(a.updatedAt || a.createdAt || 0).getTime()
-                )[0];
-                const latestLeader =
-                  latestWip.updatedBy || latestWip.leaderNik || latestWip.leaderName;
-                if (latestLeader && line.currentLeaderNik !== latestLeader) {
-                  changed = true;
-                  return {
-                    ...line,
-                    currentLeaderNik: latestLeader,
-                    lastUpdatedBy: latestLeader,
-                    status: 'in_progress' as const,
-                  };
-                }
+              const latestLeader = latestLeaderByLineMap.get(line.id.trim().toUpperCase());
+              if (latestLeader && line.currentLeaderNik !== latestLeader) {
+                changed = true;
+                return {
+                  ...line,
+                  currentLeaderNik: latestLeader,
+                  lastUpdatedBy: latestLeader,
+                  status: 'in_progress' as const,
+                };
               }
               return line;
             });
@@ -356,7 +475,7 @@ export default function App() {
     };
 
     pollBackgroundData();
-    const interval = setInterval(pollBackgroundData, 8000);
+    const interval = setInterval(pollBackgroundData, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -492,6 +611,7 @@ export default function App() {
       });
 
       safeSetItem('wip_sewing_items', JSON.stringify(nextWip));
+      setTimeout(broadcastCrossTabUpdate, 0);
       return nextWip;
     });
   };
@@ -588,6 +708,7 @@ export default function App() {
 
       const deduplicatedNext = mergeDuplicateWipItems(next);
       safeSetItem('wip_sewing_items', JSON.stringify(deduplicatedNext));
+      setTimeout(broadcastCrossTabUpdate, 0);
       return deduplicatedNext;
     });
 

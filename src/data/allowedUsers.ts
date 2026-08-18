@@ -104,10 +104,15 @@ export function validateUserNik(
   );
 }
 
+let cachedAllowedUsers: AllowedUser[] | null = null;
+
 /**
- * Helper to fetch live CSV from Google Sheet
+ * Helper to fetch live CSV from Google Sheet with in-memory caching
  */
-export async function fetchLiveAllowedUsers(): Promise<AllowedUser[]> {
+export async function fetchLiveAllowedUsers(forceRefresh = false): Promise<AllowedUser[]> {
+  if (!forceRefresh && cachedAllowedUsers && cachedAllowedUsers.length > 0) {
+    return cachedAllowedUsers;
+  }
   try {
     const res = await fetch(GOOGLE_SHEET_CSV_URL);
     if (!res.ok) throw new Error('Network error');
@@ -129,10 +134,14 @@ export async function fetchLiveAllowedUsers(): Promise<AllowedUser[]> {
     }
 
     if (parsed.length > 0) {
+      cachedAllowedUsers = parsed;
       return parsed;
     }
   } catch (err) {
     console.warn('Failed to fetch live Google Sheet users, using fallback list:', err);
   }
-  return DEFAULT_ALLOWED_USERS;
+  if (!cachedAllowedUsers) {
+    cachedAllowedUsers = DEFAULT_ALLOWED_USERS;
+  }
+  return cachedAllowedUsers;
 }

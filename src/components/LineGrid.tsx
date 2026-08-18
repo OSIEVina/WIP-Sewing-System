@@ -24,6 +24,33 @@ export const LineGrid: React.FC<LineGridProps> = ({ lines, wipItems = [], onSele
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBuildingFilter, setSelectedBuildingFilter] = useState<'ALL' | BuildingId>('ALL');
 
+  // Pre-group wipItems by lineId once in O(N) instead of O(50 * N) on every render
+  const wipByLineMap = React.useMemo(() => {
+    const map = new Map<string, { lineWips: WipItem[]; contributors: string[]; latestWip?: WipItem }>();
+    (wipItems || []).forEach((w) => {
+      const lineKey = w.lineId ? w.lineId.trim().toUpperCase() : '';
+      if (!lineKey) return;
+      let entry = map.get(lineKey);
+      if (!entry) {
+        entry = { lineWips: [], contributors: [] };
+        map.set(lineKey, entry);
+      }
+      entry.lineWips.push(w);
+      const c = w.updatedBy || w.leaderNik || '';
+      if (c && c.trim() && !entry.contributors.includes(c)) {
+        entry.contributors.push(c);
+      }
+      if (
+        !entry.latestWip ||
+        new Date(w.updatedAt || w.createdAt || 0).getTime() >
+          new Date(entry.latestWip.updatedAt || entry.latestWip.createdAt || 0).getTime()
+      ) {
+        entry.latestWip = w;
+      }
+    });
+    return map;
+  }, [wipItems]);
+
   const filteredLines = lines.filter((line) => {
     const matchesSearch =
       line.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -104,21 +131,10 @@ export const LineGrid: React.FC<LineGridProps> = ({ lines, wipItems = [], onSele
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {bLines.map((line) => {
-                  const lineWips = wipItems.filter(
-                    (w) => w.lineId?.trim().toUpperCase() === line.id.trim().toUpperCase()
-                  );
-                  const contributors = Array.from(
-                    new Set(
-                      lineWips
-                        .map((w) => w.updatedBy || w.leaderNik || '')
-                        .filter((n) => Boolean(n && n.trim()))
-                    )
-                  );
-                  const latestWip = [...lineWips].sort(
-                    (a, b) =>
-                      new Date(b.updatedAt || b.createdAt || 0).getTime() -
-                      new Date(a.updatedAt || a.createdAt || 0).getTime()
-                  )[0];
+                  const lineData = wipByLineMap.get(line.id.trim().toUpperCase());
+                  const lineWips = lineData?.lineWips || [];
+                  const contributors = lineData?.contributors || [];
+                  const latestWip = lineData?.latestWip;
 
                   const effectiveLeader =
                     latestWip?.updatedBy ||

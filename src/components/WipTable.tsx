@@ -69,6 +69,53 @@ export const WipTable: React.FC<WipTableProps> = ({
   const cleanColor = (c?: string) => (c ? c.replace(/\s+/g, '').toLowerCase() : '');
   const cleanSize = (sz?: string) => (sz ? sz.replace(/\s+/g, '').toLowerCase() : '');
 
+  // Pre-indexed lookup maps for ultra-fast rendering (O(1) lookups)
+  const chkMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (chkItems || []).forEach((c) => {
+      const cLine = cleanLine(c.line);
+      const cSpo = cleanSpo(c.spo);
+      const cSize = cleanSize(c.size);
+      const cDate = c.date ? c.date.trim() : (c.createdAt ? c.createdAt.split('T')[0] : '');
+      const key = `${cLine}|${cSpo}|${cSize}|${cDate}`;
+      map.set(key, (map.get(key) || 0) + (c.output || 0));
+      const keyNoLine = `|${cSpo}|${cSize}|${cDate}`;
+      map.set(keyNoLine, (map.get(keyNoLine) || 0) + (c.output || 0));
+    });
+    return map;
+  }, [chkItems]);
+
+  const scanMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (scanItems || []).forEach((s) => {
+      const sLine = cleanLine(s.line);
+      const sSpo = cleanSpo(s.spo);
+      const sSize = cleanSize(s.size);
+      const sDate = s.date ? s.date.trim() : '';
+      const key = `${sLine}|${sSpo}|${sSize}|${sDate}`;
+      map.set(key, (map.get(key) || 0) + (s.qtyPcs || 0));
+      const keyNoLine = `|${sSpo}|${sSize}|${sDate}`;
+      map.set(keyNoLine, (map.get(keyNoLine) || 0) + (s.qtyPcs || 0));
+    });
+    return map;
+  }, [scanItems]);
+
+  const itemCombinationMap = useMemo(() => {
+    const map = new Map<string, { totalOutSewing: number; totalOutPacking: number; items: WipItem[] }>();
+    items.forEach((i) => {
+      const key = `${cleanLine(i.lineId)}|${cleanSpo(i.spo)}|${cleanColor(i.color)}|${cleanSize(i.size)}`;
+      let entry = map.get(key);
+      if (!entry) {
+        entry = { totalOutSewing: 0, totalOutPacking: 0, items: [] };
+        map.set(key, entry);
+      }
+      entry.totalOutSewing += (i.outSewing || 0);
+      entry.totalOutPacking += (i.outPacking || 0);
+      entry.items.push(i);
+    });
+    return map;
+  }, [items]);
+
   // Helper to resolve dynamic CHK10 inspection value for a given WIP item
   const getChk10Value = (item: WipItem) => {
     const itemDate = getItemDate(item);
@@ -77,17 +124,9 @@ export const WipTable: React.FC<WipTableProps> = ({
     const itemSize = cleanSize(item.size);
 
     if (chkItems && chkItems.length > 0) {
-      const dateMatches = chkItems.filter((c) => {
-        const cLine = cleanLine(c.line);
-        const cSpo = cleanSpo(c.spo);
-        const cSize = cleanSize(c.size);
-        const cDate = c.date ? c.date.trim() : (c.createdAt ? c.createdAt.split('T')[0] : '');
-        const lineMatch = !itemLine || !cLine || cLine === itemLine;
-        return lineMatch && cSpo === itemSpo && cSize === itemSize && (!itemDate || !cDate || cDate === itemDate);
-      });
-
-      const dateSum = dateMatches.reduce((sum, c) => sum + (c.output || 0), 0);
-      if (dateSum > 0) return dateSum;
+      const key = `${itemLine}|${itemSpo}|${itemSize}|${itemDate}`;
+      const val = chkMap.get(key) ?? chkMap.get(`|${itemSpo}|${itemSize}|${itemDate}`);
+      if (val !== undefined && val > 0) return val;
     }
 
     return item.chk3d || 0;
@@ -100,32 +139,19 @@ export const WipTable: React.FC<WipTableProps> = ({
     const itemSize = cleanSize(item.size);
 
     if (scanItems && scanItems.length > 0) {
-      const matches = scanItems.filter((s) => {
-        const sLine = cleanLine(s.line);
-        const sSpo = cleanSpo(s.spo);
-        const sSize = cleanSize(s.size);
-        const sDate = s.date ? s.date.trim() : '';
-        const lineMatch = !itemLine || !sLine || sLine === itemLine;
-        return lineMatch && sSpo === itemSpo && sSize === itemSize && (!itemDate || !sDate || sDate === itemDate);
-      });
-      const sheetSum = matches.reduce((sum, s) => sum + (s.qtyPcs || 0), 0);
-      if (sheetSum > 0) return sheetSum;
+      const key = `${itemLine}|${itemSpo}|${itemSize}|${itemDate}`;
+      const val = scanMap.get(key) ?? scanMap.get(`|${itemSpo}|${itemSize}|${itemDate}`);
+      if (val !== undefined && val > 0) return val;
     }
     return item.chk10Scan || 0;
   };
 
   // Formula: Akumulasi Output Sewing - Akumulasi Out Packing untuk SPO, Color & Size ini di Line ini (tanpa memandang hari)
   const getItemWipFinish = (item: WipItem) => {
-    const matchingItems = items.filter(
-      (i) =>
-        cleanLine(i.lineId) === cleanLine(item.lineId) &&
-        cleanSpo(i.spo) === cleanSpo(item.spo) &&
-        cleanColor(i.color) === cleanColor(item.color) &&
-        cleanSize(i.size) === cleanSize(item.size)
-    );
-    const totalOutSewing = matchingItems.reduce((sum, i) => sum + (i.outSewing || 0), 0);
-    const totalOutPacking = matchingItems.reduce((sum, i) => sum + (i.outPacking || 0), 0);
-    return Math.max(0, totalOutSewing - totalOutPacking);
+    const key = `${cleanLine(item.lineId)}|${cleanSpo(item.spo)}|${cleanColor(item.color)}|${cleanSize(item.size)}`;
+    const group = itemCombinationMap.get(key);
+    if (!group) return 0;
+    return Math.max(0, group.totalOutSewing - group.totalOutPacking);
   };
 
   // Helper to calculate total WIP Sewing for a row (Sum of WIP 0..5 or recorded WIP Sewing)
@@ -146,18 +172,23 @@ export const WipTable: React.FC<WipTableProps> = ({
 
   // Helper to calculate carryover values for a specific SPO + Color + Size combination up to a given date
   const getCarryoverValues = (lineId: string, spo: string, color: string, size: string, targetDate: string) => {
-    const priorItems = items.filter(
-      (i) =>
-        cleanLine(i.lineId) === cleanLine(lineId) &&
-        cleanSpo(i.spo) === cleanSpo(spo) &&
-        cleanColor(i.color) === cleanColor(color) &&
-        cleanSize(i.size) === cleanSize(size) &&
-        getItemDate(i) < targetDate
-    );
+    const key = `${cleanLine(lineId)}|${cleanSpo(spo)}|${cleanColor(color)}|${cleanSize(size)}`;
+    const group = itemCombinationMap.get(key);
+    if (!group) {
+      return { pastScanIn: 0, pastOutSewing: 0, pastOutPacking: 0, carryoverWipSewing: 0, carryoverWipFinish: 0 };
+    }
 
-    const pastScanIn = priorItems.reduce((sum, i) => sum + (i.inHariIni || 0), 0);
-    const pastOutSewing = priorItems.reduce((sum, i) => sum + (i.outSewing || 0), 0);
-    const pastOutPacking = priorItems.reduce((sum, i) => sum + (i.outPacking || 0), 0);
+    let pastScanIn = 0;
+    let pastOutSewing = 0;
+    let pastOutPacking = 0;
+
+    group.items.forEach((i) => {
+      if (getItemDate(i) < targetDate) {
+        pastScanIn += (i.inHariIni || 0);
+        pastOutSewing += (i.outSewing || 0);
+        pastOutPacking += (i.outPacking || 0);
+      }
+    });
 
     const carryoverWipSewing = Math.max(0, pastScanIn - pastOutSewing);
     const carryoverWipFinish = Math.max(0, pastOutSewing - pastOutPacking);
