@@ -54,6 +54,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   const [color, setColor] = useState<string>(
     spoOptions[0]?.color || 'HYP.ROYAL/HYP.ROYAL/UNIV.RED/MET.SILVER'
   );
+  const [isCustomColorMode, setIsCustomColorMode] = useState<boolean>(false);
   const [size, setSize] = useState<string>(spoOptions[0]?.sizes[0] || 'S-PR');
   const [qtyOrder, setQtyOrder] = useState<number>(spoOptions[0]?.qtyOrder || 333);
   const [unit, setUnit] = useState<string>(spoOptions[0]?.unit || 'NPR');
@@ -248,13 +249,31 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
   // Success Notification state
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
+  // derive matching SPO options and available colors for the selected SPO
+  const matchingSpoOptions = React.useMemo(() => {
+    return (spoOptions || []).filter(
+      (s) => s.spo.toLowerCase().trim() === selectedSpo.toLowerCase().trim()
+    );
+  }, [spoOptions, selectedSpo]);
+
+  const availableColors = React.useMemo(() => {
+    const colors = matchingSpoOptions.map((s) => s.color).filter(Boolean);
+    return Array.from(new Set(colors));
+  }, [matchingSpoOptions]);
+
   // When SPO dropdown changes, auto fill Style, Color, QtyOrder, Unit & sizes
-  const handleSpoChange = (spoCode: string) => {
+  const handleSpoChange = (spoCode: string, targetColor?: string) => {
     setSelectedSpo(spoCode);
     setIsSpoDropdownOpen(false);
     setSpoSearchQuery('');
-    const found = spoOptions.find((s) => s.spo.toLowerCase() === spoCode.toLowerCase());
-    if (found) {
+    setIsCustomColorMode(false);
+
+    const matches = (spoOptions || []).filter((s) => s.spo.toLowerCase() === spoCode.toLowerCase());
+    if (matches.length > 0) {
+      const found = targetColor
+        ? matches.find((s) => s.color.toLowerCase() === targetColor.toLowerCase()) || matches[0]
+        : matches[0];
+
       setStyle(found.style);
       setColor(found.color);
       setUnit(found.unit);
@@ -272,10 +291,32 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
     }
   };
 
+  // When Color dropdown changes, update color and sync style, qty order, and available sizes
+  const handleColorChange = (newColor: string) => {
+    setColor(newColor);
+    const matches = (spoOptions || []).filter((s) => s.spo.toLowerCase() === selectedSpo.toLowerCase());
+    const found = matches.find((s) => s.color.toLowerCase() === newColor.toLowerCase());
+    if (found) {
+      setStyle(found.style);
+      setUnit(found.unit);
+      if (found.sizes.length > 0) {
+        const sizeValid = found.sizes.includes(size);
+        const activeSize = sizeValid ? size : found.sizes[0];
+        setSize(activeSize);
+        if (found.sizeQtyMap && found.sizeQtyMap[activeSize] !== undefined) {
+          setQtyOrder(found.sizeQtyMap[activeSize]);
+        } else {
+          setQtyOrder(found.qtyOrder);
+        }
+      }
+    }
+  };
+
   // When Size dropdown changes, update size and auto-fill Qty Order for that specific size
   const handleSizeChange = (newSize: string) => {
     setSize(newSize);
-    const found = spoOptions.find((s) => s.spo.toLowerCase() === selectedSpo.toLowerCase());
+    const matches = (spoOptions || []).filter((s) => s.spo.toLowerCase() === selectedSpo.toLowerCase());
+    const found = matches.find((s) => s.color.toLowerCase() === color.toLowerCase()) || matches[0];
     if (found && found.sizeQtyMap && found.sizeQtyMap[newSize] !== undefined) {
       setQtyOrder(found.sizeQtyMap[newSize]);
     }
@@ -293,7 +334,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       sizes: ['XS-PR', 'S-PR', 'M-PR', 'L-PR', 'XL-PR', '2XL-PR'],
     };
     onAddNewSpoOption(newSpoObj);
-    handleSpoChange(newSpoObj.spo);
+    handleSpoChange(newSpoObj.spo, newSpoObj.color);
     setShowAddSpoModal(false);
     setNewSpoInput('');
   };
@@ -305,6 +346,7 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
       (item) =>
         cleanLine(item.lineId) === cleanLine(lineId) &&
         cleanSpo(item.spo) === cleanSpo(selectedSpo) &&
+        cleanColor(item.color) === cleanColor(color) &&
         cleanSize(item.size) === cleanSize(size) &&
         getItemDateStr(item) === saveDate
     );
@@ -344,7 +386,13 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
     setTimeout(() => setShowSuccessToast(false), 3000);
   };
 
-  const currentSpoOption = spoOptions.find((s) => s.spo === selectedSpo);
+  const currentSpoOption =
+    matchingSpoOptions.find(
+      (s) => s.color.toLowerCase().trim() === color.toLowerCase().trim()
+    ) ||
+    matchingSpoOptions[0] ||
+    spoOptions.find((s) => s.spo.toLowerCase() === selectedSpo.toLowerCase());
+
   const availableSizes = currentSpoOption?.sizes || [
     'XS-PR',
     'S-PR',
@@ -529,19 +577,25 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
                       <button
                         key={`${opt.spo}-${opt.style}-${opt.color}-${optIdx}`}
                         type="button"
-                        onClick={() => handleSpoChange(opt.spo)}
+                        onClick={() => handleSpoChange(opt.spo, opt.color)}
                         className={`w-full text-left p-2 rounded-lg text-xs transition flex flex-col gap-0.5 hover:bg-blue-50 ${
-                          opt.spo === selectedSpo ? 'bg-blue-50/80 border-l-2 border-blue-600' : ''
+                          opt.spo === selectedSpo && opt.color === color ? 'bg-blue-50/80 border-l-2 border-blue-600' : ''
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-slate-900">{opt.spo}</span>
-                          <span className="text-[10px] font-mono text-blue-700 font-semibold bg-blue-100/60 px-1.5 py-0.5 rounded">
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-mono font-bold text-slate-900">{opt.spo}</span>
+                            {opt.color && (
+                              <span className="text-[10px] font-mono text-purple-700 font-semibold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 truncate max-w-[120px]">
+                                {opt.color}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-mono text-blue-700 font-semibold bg-blue-100/60 px-1.5 py-0.5 rounded shrink-0">
                             {opt.qtyOrder} {opt.unit}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-600 font-mono truncate">{opt.style}</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate">{opt.color}</p>
                       </button>
                     ))}
 
@@ -575,16 +629,61 @@ export const LineWipDetail: React.FC<LineWipDetailProps> = ({
             />
           </div>
 
-          {/* Color */}
+          {/* Color Dropdown & Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Color</label>
-            <input
-              type="text"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              id="input-color"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 font-mono transition-all"
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <span>Color</span>
+                {availableColors.length > 1 && (
+                  <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200 font-mono font-bold">
+                    {availableColors.length} Warna
+                  </span>
+                )}
+              </label>
+              {availableColors.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsCustomColorMode(!isCustomColorMode)}
+                  className="text-[10px] text-blue-600 hover:underline font-semibold"
+                >
+                  {isCustomColorMode ? 'Pilih Dropdown' : '+ Custom / Manual'}
+                </button>
+              )}
+            </div>
+
+            {isCustomColorMode || availableColors.length === 0 ? (
+              <input
+                type="text"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                id="input-color"
+                placeholder="Ketik warna..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 font-mono transition-all"
+              />
+            ) : (
+              <select
+                value={color}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    setIsCustomColorMode(true);
+                  } else {
+                    handleColorChange(e.target.value);
+                  }
+                }}
+                id="select-color"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+              >
+                {availableColors.map((c, cIdx) => (
+                  <option key={`${c}-${cIdx}`} value={c}>
+                    {c}
+                  </option>
+                ))}
+                {!availableColors.includes(color) && color && (
+                  <option value={color}>{color}</option>
+                )}
+                <option value="__custom__">+ Custom / Warna Lain...</option>
+              </select>
+            )}
           </div>
         </div>
 
